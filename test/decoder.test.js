@@ -41,7 +41,7 @@ before(() => {
     requestAnimationFrame: () => 0,
     document: {
       getElementById: (id) => els[id] || (els[id] = fakeElement()),
-      querySelectorAll: () => [], addEventListener: () => {},
+      querySelectorAll: () => [], querySelector: () => null, addEventListener: () => {},
       body: fakeElement(), documentElement: fakeElement(),
     },
     getComputedStyle: () => ({ getPropertyValue: () => '' }),

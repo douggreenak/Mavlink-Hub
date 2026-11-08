@@ -63,3 +63,50 @@ test('addresses returns http URLs on the given port with private ranges first', 
   assert.ok(Array.isArray(urls));
   for (const u of urls) assert.match(u, /^http:\/\/\d+\.\d+\.\d+\.\d+:9999$/);
 });
+
+test('applyEnvFile reads KEY=VALUE lines, skips comments, strips quotes, never overrides real env', () => {
+  const f = path.join(process.env.DATA_DIR, 'hub.env');
+  fs.writeFileSync(f, '# comment\nWEB_PORT = 9090\nMAX_TILES=0   # unlimited\nDATA_DIR="/Volumes/Big Disk/hub"\nBAD LINE\nUDP_PORT=1\n');
+  const env = S.applyEnvFile(f, { UDP_PORT: '14550' });
+  assert.deepEqual(env, { UDP_PORT: '14550', WEB_PORT: '9090', MAX_TILES: '0', DATA_DIR: '/Volumes/Big Disk/hub' });
+  assert.deepEqual(S.applyEnvFile(path.join(process.env.DATA_DIR, 'missing.env'), { A: '1' }), { A: '1' });
+});
+
+test('defaultDataDir is an absolute per-user folder named for the hub', () => {
+  const d = S.defaultDataDir();
+  assert.ok(path.isAbsolute(d));
+  assert.match(d, /mavlink[- ]hub/i);
+  assert.ok(d.startsWith(os.homedir()) || process.platform === 'win32');
+});
+
+test('migrateOldData moves cache/ and settings.json once and leaves existing data alone', () => {
+  const from = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-old-')), to = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-new-'));
+  fs.mkdirSync(path.join(from, 'cache', 'tiles', 'street', '1', '0'), { recursive: true });
+  fs.writeFileSync(path.join(from, 'cache', 'tiles', 'street', '1', '0', '1'), 'png');
+  fs.writeFileSync(path.join(from, 'settings.json'), '{"units":"imperial"}');
+  const logs = [];
+  assert.equal(S.migrateOldData(from, to, (m) => logs.push(m)), true);
+  assert.equal(fs.readFileSync(path.join(to, 'cache', 'tiles', 'street', '1', '0', '1'), 'utf8'), 'png');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(to, 'settings.json'), 'utf8')).units, 'imperial');
+  assert.ok(!fs.existsSync(path.join(from, 'cache')) && !fs.existsSync(path.join(from, 'settings.json')));
+  assert.equal(logs.length, 1);
+  assert.equal(S.migrateOldData(from, to, () => {}), false, 'nothing left to move');
+  fs.writeFileSync(path.join(from, 'settings.json'), '{"units":"metric"}');
+  assert.equal(S.migrateOldData(from, to, () => {}), false, 'does not overwrite settings already in the new place');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(to, 'settings.json'), 'utf8')).units, 'imperial');
+  assert.equal(S.migrateOldData(from, from, () => {}), false, 'same folder is a no-op');
+});
+
+test('clearArea removes only the tiles inside the ranges and tidies empty folders', () => {
+  const put = (z, x, y) => { const d = path.join(S.CACHE, 'tiles', 'sat', String(z), String(x)); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, String(y)), 'x'); };
+  for (let x = 0; x < 4; x++) for (let y = 0; y < 4; y++) put(2, x, y);
+  put(3, 7, 7);
+  // western hemisphere at zoom 2 = x 0..1
+  const n = S.clearArea('sat', S.ranges({ w: -180, e: -1, s: -85, n: 85 }, 2, 2));
+  assert.equal(n, 8);
+  assert.ok(!fs.existsSync(path.join(S.CACHE, 'tiles', 'sat', '2', '0')), 'emptied x folder removed');
+  assert.ok(fs.existsSync(path.join(S.CACHE, 'tiles', 'sat', '2', '3', '3')));
+  assert.ok(fs.existsSync(path.join(S.CACHE, 'tiles', 'sat', '3', '7', '7')), 'other zooms untouched');
+  assert.equal(S.clearArea('sat', S.ranges({ w: -180, e: 180, s: -85, n: 85 }, 2, 3)), 9);
+  assert.ok(!fs.existsSync(path.join(S.CACHE, 'tiles', 'sat', '2')), 'emptied zoom folder removed');
+});

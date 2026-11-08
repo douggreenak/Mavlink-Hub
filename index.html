@@ -7,105 +7,134 @@
 <script async src="/vendor/leaflet.js"></script>
 <script async src="/vendor/qrcode.js"></script>
 <style>
-:root{--p:#01426A;--op:#FFFFFF;--pc:#CCE3F4;--opc:#01426A;--sc:#B4EFF9;--osc:#00274A;--tc:#C9E1A7;--otc:#00274A;--s:#F7F7F7;--sl:#FFFFFF;--sh:#E8E8E8;--ink:#222222;--mute:#6E7783;--out:#C8C9C7;--sky:#48A9C5;--gnd:#01426A;--warn:#FFF0B2;--owarn:#3D2E00}
-:root[data-mode=dark]{color-scheme:dark;--p:#5DE3F7;--op:#00274A;--pc:#0B4F85;--opc:#D4E8F8;--sc:#00677F;--osc:#C2F3FB;--tc:#2F6B3A;--otc:#DDF0C2;--s:#00274A;--sl:#07335A;--sh:#134469;--ink:#FFFFFF;--mute:#CCD2DB;--out:#336787;--sky:#2774AE;--gnd:#031F3A;--warn:#5C4700;--owarn:#FFE58A}
+/* Tokens. Names are shared with the script (--p, --op, --tc, --otc, --warn, --owarn, --sh, --sky, --gnd, --mute). */
+:root{--s:#F2F4F7;--sl:#FFFFFF;--sh:#E9EDF2;--ink:#161C25;--mute:#5F6B7A;--out:#D8DEE6;--p:#1C6FD1;--op:#FFFFFF;--pc:#DCEBFB;--opc:#0F3E78;--sc:#E3F2FD;--osc:#0F3E78;
+ --tc:#D7F2E3;--otc:#0E5A36;--warn:#FCEFC4;--owarn:#6A4A00;--bad:#D93025;--ok:#2DA86B;--amber:#E0A526;--gold:#F6C343;--sky:#4A9BE8;--gnd:#8A5A2B;--shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08)}
+:root[data-mode=dark]{color-scheme:dark;--s:#0E131B;--sl:#171E29;--sh:#232C39;--ink:#E7ECF3;--mute:#95A1B3;--out:#2C3644;--p:#5AA7F5;--op:#0B1220;--pc:#1B3454;--opc:#D2E5FA;--sc:#1B3454;--osc:#D2E5FA;
+ --tc:#15382A;--otc:#8EE0B7;--warn:#4A3708;--owarn:#F5D47C;--bad:#F0545A;--ok:#3FC484;--amber:#F2B84B;--gold:#F6C343;--sky:#2A6FB5;--gnd:#4E3218;--shadow:none}
 .leaflet-container{background:var(--sh);font-family:inherit}
 [data-mode=dark] #lf.street .leaflet-tile-pane,[data-mode=dark] #om.street .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9)}
 .leaflet-control-attribution{background:var(--sl)!important;color:var(--mute)!important}
 .leaflet-control-attribution a{color:var(--p)!important}
 .leaflet-bar a{background:var(--sl);color:var(--ink);border-color:var(--out)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--s);color:var(--ink);font:400 16px/1.4 "Roboto Flex",system-ui,sans-serif}
-header{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center;padding:20px 24px 8px}
-h1{color:var(--p);font-size:34px;font-weight:800;letter-spacing:-.5px;margin:0 auto 0 0}
-.chip{padding:6px 16px;border-radius:999px;background:var(--sh);font-weight:600;font-size:14px;border:0;color:var(--ink);font-family:inherit}
-nav{display:flex;gap:6px;padding:8px 24px}
-nav button{font-family:inherit;font-weight:600;font-size:15px;border:0;padding:12px 22px;border-radius:12px;background:var(--sh);color:var(--ink);cursor:pointer;transition:border-radius .35s cubic-bezier(.34,1.56,.64,1),background .2s}
-nav button.on{border-radius:999px;background:var(--p);color:var(--op)}
-main{padding:8px 24px 24px}
+body{margin:0;background:var(--s);color:var(--ink);font:400 15px/1.45 "Roboto Flex",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--p);outline-offset:2px}
+header{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center;padding:18px 24px 6px}
+h1{color:var(--ink);font-size:22px;font-weight:700;letter-spacing:-.3px;margin:0 auto 0 0}
+.chip{padding:6px 14px;border-radius:999px;background:var(--sh);font-weight:600;font-size:13px;border:1px solid transparent;color:var(--ink);line-height:1.4;transition:background .15s,border-color .15s}
+button.chip{cursor:pointer}button.chip:hover{border-color:var(--out)}
+.chip.on{background:var(--p);color:var(--op)}.chip:disabled{opacity:.45;cursor:default}
+nav{display:flex;gap:4px;padding:8px 24px;margin:0 auto;max-width:max-content}
+nav button{font-weight:600;font-size:14px;border:0;padding:9px 18px;border-radius:10px;background:transparent;color:var(--mute);cursor:pointer;transition:background .15s,color .15s}
+nav button:hover{color:var(--ink);background:var(--sh)}
+nav button.on{background:var(--sl);color:var(--p);box-shadow:var(--shadow)}
+:root[data-mode=dark] nav button.on{background:var(--sh);color:var(--ink)}
+main{padding:8px 24px 24px;max-width:1500px;margin:0 auto}
 .view{display:none}.view.on{display:block}
-.card{background:var(--sl);border-radius:18px;padding:20px;margin-bottom:16px}
-.grid{display:grid;grid-template-columns:minmax(260px,380px) 1fr;gap:16px;margin-bottom:16px}
-.hor{padding:0;border-radius:22px;overflow:hidden;background:var(--pc);margin:0}
-#hor{width:100%;display:block}
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-.tile{border-radius:14px;padding:16px 18px;background:var(--sh)}
-.tile:nth-child(3n+1){background:var(--pc);color:var(--opc)}
-.tile:nth-child(3n+2){background:var(--sc);color:var(--osc);border-radius:20px 8px 20px 8px}
-.tile:nth-child(3n){background:var(--tc);color:var(--otc);border-radius:8px 20px 8px 20px}
-.tile b{display:block;font-size:36px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
-.tile span{font-size:13px;opacity:.8}
-.rc{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px 16px;font-size:13px}
-.bar{height:12px;border-radius:6px;background:var(--sh);overflow:hidden}
-.bar i{display:block;height:100%;background:var(--p);border-radius:6px}
-#lf,#cv{height:calc(100vh - 200px);min-height:360px;width:100%;border-radius:18px;display:none;overflow:hidden}
+.card{background:var(--sl);border:1px solid var(--out);border-radius:16px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+/* The attitude indicator is a 2x2 block inside the same grid as the value tiles, so tiles flow around and below it. */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:12px}
+#tiles{display:contents}
+.hor{padding:0;overflow:hidden;background:var(--sh);margin:0;grid-column:span 2;grid-row:span 2;position:relative;min-height:200px}
+#hor{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;align-content:start}
+.tile{border-radius:14px;padding:14px 16px;background:var(--sl);border:1px solid var(--out);box-shadow:var(--shadow);min-width:0}
+.tile .lab{color:var(--mute);font-size:12.5px;font-weight:600;letter-spacing:.01em;line-height:1.25;min-height:2.5em;align-items:flex-start}
+.tile .lab svg{margin-top:1px}
+.tile .lab svg{color:var(--p)}
+.tile b{display:block;font-size:30px;font-weight:700;line-height:1.15;margin:6px 0 2px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tile span{font-size:12px;color:var(--mute)}
+.rc{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px 16px;font-size:13px;color:var(--mute)}
+.bar{height:8px;border-radius:4px;background:var(--sh);overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:var(--p);border-radius:4px}
+#lf,#cv{height:calc(100vh - 200px);min-height:360px;width:100%;border-radius:16px;display:none;overflow:hidden;border:1px solid var(--out)}
 #cv{background:var(--sh)}
-.all{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.all{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .all .card{margin:0}
-h2,h3{margin:0 0 6px;font-size:18px;display:flex;justify-content:space-between}
-h3 span{font-weight:400;color:var(--mute);font-size:13px}
-dl{display:grid;grid-template-columns:auto 1fr;gap:2px 16px;margin:8px 0 0;font-size:14px}
+h2,h3{margin:0 0 8px;font-size:16px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px}
+h3{font-size:14px}h3 span{font-weight:500;color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums}
+dl{display:grid;grid-template-columns:auto 1fr;gap:3px 16px;margin:8px 0 0;font-size:13px}
 dt{color:var(--mute)}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;word-break:break-all}
-.lab{display:flex;align-items:center;gap:8px}.lab svg{width:20px;height:20px;flex:none}
+.lab{display:flex;align-items:center;gap:7px}.lab svg{width:17px;height:17px;flex:none}
 .cells{display:flex;gap:12px;align-items:flex-end;height:150px}
 .cell{flex:1;max-width:90px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;font-size:12px;color:var(--mute)}
-.cell b{color:var(--ink);font-size:15px}.cell i{display:block;width:100%;border-radius:6px;min-height:6px;transition:height .3s}
+.cell b{color:var(--ink);font-size:14px;font-variant-numeric:tabular-nums}.cell i{display:block;width:100%;border-radius:6px;min-height:6px;transition:height .3s}
 .hideable{position:relative}.hideable.off{display:none}
 body:not(.editing) #he{display:none}
-body.editing .hideable{cursor:pointer;outline:2px dashed var(--out);outline-offset:-2px}
+body.editing .hideable{cursor:pointer;outline:2px dashed var(--p);outline-offset:-2px}
 body.editing .hideable.off{display:block;opacity:.4}
-body.editing .hideable::after{content:'✕';position:absolute;top:8px;right:10px;width:26px;height:26px;border-radius:50%;background:var(--p);color:var(--op);display:grid;place-items:center;font-size:14px}
+body.editing .hideable::after{content:'✕';position:absolute;top:8px;right:10px;width:24px;height:24px;border-radius:50%;background:var(--p);color:var(--op);display:grid;place-items:center;font-size:12px}
 body.editing .hideable.off::after{content:'+'}
-#chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .chip:empty{display:none}
-.bars{display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:var(--sh);color:var(--ink);padding:6px 14px 6px 12px;font:600 14px "Roboto Flex",system-ui,sans-serif;cursor:pointer}
-.bars rect{fill:var(--out)}.bars rect.on{fill:var(--p)}.bars.mid rect.on{fill:#FAC200}.bars.low rect.on{fill:#E31F26}
-#conn{position:fixed;top:68px;right:24px;width:min(360px,calc(100vw - 24px));z-index:1300;display:none;border:1px solid var(--out);box-shadow:0 10px 30px rgba(0,0,0,.25);margin:0}
+#link,#arm{font-weight:600}
+.bars{display:flex;align-items:center;gap:8px;border:1px solid var(--out);border-radius:999px;background:var(--sl);color:var(--ink);padding:5px 12px 5px 10px;font:600 13px "Roboto Flex",system-ui,sans-serif;cursor:pointer;font-variant-numeric:tabular-nums}
+.bars rect{fill:var(--out)}.bars rect.on{fill:var(--ok)}.bars.mid rect.on{fill:var(--amber)}.bars.low rect.on{fill:var(--bad)}
+#conn{position:fixed;top:64px;right:24px;width:min(360px,calc(100vw - 24px));z-index:1300;display:none;box-shadow:0 12px 32px rgba(0,0,0,.22);margin:0}
 #conn.show{display:block}
-.crow{display:grid;grid-template-columns:1fr auto;gap:2px 12px;margin:10px 0;font-size:14px}.crow span{color:var(--mute)}.crow .bar{grid-column:1/-1}
+.crow{display:grid;grid-template-columns:1fr auto;gap:2px 12px;margin:10px 0;font-size:13px}.crow span{color:var(--mute)}.crow b{font-variant-numeric:tabular-nums;font-weight:600}.crow .bar{grid-column:1/-1;margin:0}
 @media(max-width:800px){
- header{padding:14px 14px 4px;gap:8px 10px}h1{font-size:26px}
+ header{padding:12px 14px 4px;gap:8px 10px}h1{font-size:19px}
  #chips{order:3;width:100%;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
  #chips::-webkit-scrollbar{display:none}
- .chip{white-space:nowrap;flex:none;min-height:36px;display:inline-flex;align-items:center}
- .bars{order:2;min-height:40px}
- nav{position:fixed;left:0;right:0;bottom:0;z-index:1200;background:var(--sl);border-top:1px solid var(--out);padding:8px 12px calc(8px + env(safe-area-inset-bottom));gap:8px}
- nav button{flex:1;min-height:48px;padding:10px}
- main{padding:8px 12px 112px}
- .hor{margin:0}#hor{height:230px;object-fit:cover}
+ .chip{white-space:nowrap;flex:none;min-height:34px;display:inline-flex;align-items:center}
+ .bars{order:2;min-height:36px}
+ nav{position:fixed;left:0;right:0;bottom:0;z-index:1200;background:var(--sl);border-top:1px solid var(--out);padding:6px 10px calc(6px + env(safe-area-inset-bottom));gap:4px;max-width:none;margin:0}
+ nav button{flex:1;min-height:44px;padding:8px;border-radius:10px}
+ nav button.on{box-shadow:none;background:var(--sh)}
+ main{padding:6px 12px 100px}
+ .grid{grid-template-columns:repeat(2,1fr);gap:10px}
  .tiles{grid-template-columns:repeat(2,1fr);gap:10px}
- .tile{padding:12px 14px}.tile b{font-size:30px}
+ .tile{padding:12px 14px}.tile b{font-size:26px}
  .rc{grid-template-columns:repeat(2,1fr)}
  .cells{height:130px;gap:8px}
  h2{flex-wrap:wrap;gap:6px}
  .all{grid-template-columns:1fr}
  #lf,#cv{height:calc(100vh - 290px);height:calc(100dvh - 290px);min-height:300px}
- #snack{bottom:96px}
+ #snack{bottom:86px}
  #conn{top:56px;right:8px;left:8px;width:auto}
 }
-.dlg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1400;padding:16px}
+.dlg{position:fixed;inset:0;background:rgba(10,14,20,.55);display:none;align-items:center;justify-content:center;z-index:1400;padding:16px;backdrop-filter:blur(2px)}
 .dlg.show{display:flex}
-.dlg .card{margin:0;max-width:360px;width:100%;text-align:center}
+.dlg .card{margin:0;max-width:360px;width:100%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.3)}
 .dlg h2{justify-content:center}
 .dlg svg{width:min(260px,70vw);height:auto;border-radius:8px;display:block;margin:12px auto}
-#qrurl{word-break:break-all;font-size:14px;color:var(--mute);margin:4px 0}
+#qrurl{word-break:break-all;font-size:13px;color:var(--mute);margin:4px 0}
 #qrsel{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:8px 0}
-button.chip{cursor:pointer}.chip.on{background:var(--p);color:var(--op)}.chip:disabled{opacity:.45;cursor:default}
 .mrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}.mute{color:var(--mute)}
-select{font:inherit;padding:6px 10px;border-radius:10px;border:1px solid var(--out);background:var(--sl);color:var(--ink)}
-#om{height:calc(100vh - 380px);min-height:380px;border-radius:18px;overflow:hidden;margin-bottom:16px}
-.hnd{width:26px;height:26px;border-radius:50%;background:var(--p);border:3px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.45)}
+label.chip{display:inline-flex;align-items:center;gap:6px}
+select{font:inherit;font-size:13px;padding:5px 8px;border-radius:8px;border:1px solid var(--out);background:var(--sl);color:var(--ink)}
+.small{font-size:13px}
+.steps{margin:0 0 14px;padding-left:22px;color:var(--mute);font-size:14px;display:grid;gap:4px}.steps b{color:var(--ink);font-weight:600}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.opt{position:relative;display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1.5px solid var(--out);border-radius:12px;cursor:pointer;background:var(--sl);transition:border-color .15s,background .15s}
+.opt:hover{border-color:var(--mute)}
+.opt input{position:absolute;opacity:0;pointer-events:none}
+.opt b{font-size:15px}.opt span{font-size:13px;color:var(--mute)}
+.opt i{font-style:normal;font-size:12.5px;font-weight:600;margin-top:8px;color:var(--p);font-variant-numeric:tabular-nums}
+.opt.on{border-color:var(--p);background:var(--pc);box-shadow:0 0 0 1px var(--p) inset}
+.opt.over{opacity:.7}.opt.over i{color:var(--bad)}
+.opt:has(:focus-visible){outline:2px solid var(--p);outline-offset:2px}
+.chip.big{padding:10px 20px;font-size:14px}
+details summary{cursor:pointer;color:var(--mute);font-size:13px;user-select:none}
+#omwrap{position:relative;margin-bottom:16px;border-radius:16px;overflow:hidden;border:1px solid var(--out)}
+#om{margin:0;border:0;border-radius:0}
+#omframe{position:absolute;inset:12%;border:2px solid var(--p);border-radius:6px;pointer-events:none;z-index:500;box-shadow:0 0 0 9999px rgba(10,14,20,.3)}
+#omframe span{position:absolute;top:-2px;left:-2px;background:var(--p);color:var(--op);font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px 0 6px 0;letter-spacing:.02em}
+@media(max-width:800px){.opts{grid-template-columns:1fr}}
+#om{height:calc(100vh - 380px);min-height:380px}
 @media(max-width:800px){#om{height:55vh;height:55dvh;min-height:300px}}
-#snack{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);background:var(--ink);color:var(--s);padding:14px 22px;border-radius:20px;display:none;max-width:90vw}
-@media(max-width:800px){.grid{grid-template-columns:1fr}}
-@media(prefers-reduced-motion:reduce){nav button{transition:none}}
+#snack{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:max-content;max-width:min(90vw,calc(100vw - 32px));background:var(--ink);color:var(--s);padding:12px 20px;border-radius:14px;display:none;font-size:14px;font-weight:500;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:1250}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body>
 <header><h1>Flight telemetry</h1>
 <div id="chips"><span id="link" class="chip">Connecting…</span><span id="arm" class="chip"></span><button id="demo" class="chip" style="cursor:pointer">Demo mode</button><button id="theme" class="chip" style="cursor:pointer">Theme: Auto</button><button id="units" class="chip" style="cursor:pointer">Units: Metric</button><button id="edit" class="chip" style="cursor:pointer">Edit tiles</button><button id="he" class="chip" style="cursor:pointer">Hide empty</button><button id="qrb" class="chip" style="cursor:pointer">Open on phone</button></div>
 <button id="bars" class="bars" aria-label="Connection stats"></button></header>
 <nav id="nav"><button data-v="flight" class="on">Flight</button><button data-v="map">Map</button><button data-v="maps">Offline</button><button data-v="all">All data</button></nav>
 <main>
-<div id="fileWarn" class="card" style="display:none">You opened this file directly, so there is no live data and the map cannot load. Start the hub (double-click <b>start.command</b>, or run <b>node server.js</b>) and open <b>http://localhost:8080</b>. Demo mode still works here.</div>
+<div id="fileWarn" class="card" style="display:none">You opened this file directly, so there is no live data and the map cannot load. Start the hub (double-click <b>MAVLink Hub.bat</b> on Windows, <b>start.command</b> on a Mac, or run <b>node server.js</b>) and open <b>http://localhost:8080</b>. Demo mode still works here.</div>
 <div id="flight" class="view on">
  <div class="grid"><div class="card hor hideable" data-key="Attitude indicator"><canvas id="hor" width="380" height="380"></canvas></div><div id="tiles" class="tiles"></div></div>
  <div class="card hideable" data-key="Battery cells"><h2>Battery cells<span id="cellsub"></span><span><button id="cm" class="chip" style="cursor:pointer">−</button> <button id="cp" class="chip" style="cursor:pointer">+</button></span></h2><div id="cells" class="cells"></div></div>
@@ -114,23 +143,25 @@ select{font:inherit;padding:6px 10px;border-radius:10px;border:1px solid var(--o
 </div>
 <div id="map" class="view">
  <div class="card" id="mapmsg">Waiting for a GPS position…</div>
- <button class="chip" id="fol" style="margin-bottom:12px;cursor:pointer">Following plane</button> <button class="chip" id="lay" style="margin-bottom:12px;cursor:pointer">Satellite</button> <button class="chip" id="dl" style="margin-bottom:12px;cursor:pointer">Save area offline</button>
+ <button class="chip" id="fol" style="margin-bottom:12px;cursor:pointer">Following plane</button> <button class="chip" id="lay" style="margin-bottom:12px;cursor:pointer">Satellite</button> <button class="chip" id="dl" style="margin-bottom:12px;cursor:pointer">Save this view offline</button>
  <div id="lf"></div><canvas id="cv"></canvas>
 </div>
 <div id="maps" class="view">
  <div class="mrow"><button class="chip on" data-ml="street">Street</button><button class="chip" data-ml="sat">Satellite</button>
-  <label class="chip"><input type="checkbox" id="omcov" checked> Downloaded areas</label>
-  <label class="chip">Coverage zoom <select id="omcz"><option value="auto">Auto</option></select></label><span id="omzs" class="mute"></span></div>
- <div id="om"></div>
- <div class="card"><h2>Download an area</h2>
-  <p class="mute">Drag the two round handles on the map to outline the area, then choose how much detail to save.</p>
-  <div class="mrow"><button class="chip" id="omview">Use visible area</button><button class="chip" data-preset="8-11">Overview</button><button class="chip" data-preset="13-16">Field</button><button class="chip" data-preset="15-17">Detailed</button></div>
-  <div class="mrow"><label>Least detail <select id="omz0"></select></label><label>Most detail <select id="omz1"></select></label></div>
-  <p id="omest"></p>
-  <div class="bar"><i id="ompb" style="width:0"></i></div>
-  <div class="mrow" style="margin-top:12px"><button class="chip" id="omgo">Download</button><button class="chip" id="omstop" style="display:none">Stop</button><span id="omst"></span></div>
-  <p class="mute" style="font-size:13px">Tiles come from OpenStreetMap and Esri, whose terms ask for modest use, so each download is limited in size. Tiles you simply look at are saved too.</p></div>
- <div class="card"><h2>Downloaded so far</h2><div id="omsum"></div></div>
+  <label class="chip"><input type="checkbox" id="omcov" checked> Show saved areas</label><span id="omzs" class="mute small"></span></div>
+ <div id="omwrap"><div id="om"></div><div id="omframe"><span>Area to save</span></div></div>
+ <div class="card"><h2>Save this area for offline use</h2>
+  <ol class="steps">
+   <li><b>Frame the area.</b> Move and zoom the map until everything you want is inside the blue frame.</li>
+   <li><b>Choose how much detail.</b> More detail means more tiles and a bigger download.</li>
+   <li><b>Download.</b> Leave this page open until it finishes.</li>
+  </ol>
+  <div class="opts" id="omopts"></div>
+  <details class="small"><summary>Custom detail levels</summary><div class="mrow" style="margin-top:8px"><label>From <select id="omz0"></select></label><label>to <select id="omz1"></select></label><span id="omcust" class="mute"></span></div></details>
+  <div class="mrow" style="margin-top:14px"><button class="chip on big" id="omgo">Download</button><button class="chip" id="omstop" style="display:none">Stop</button><button class="chip" id="omdel" style="display:none">Delete saved tiles in this frame</button><span id="omst" class="mute"></span></div>
+  <div class="bar" id="ompbw" style="display:none"><i id="ompb" style="width:0"></i></div>
+  <p class="mute small" id="omfoot">Each download is capped on this hub. Tiles you look at on the Map tab are kept automatically.</p></div>
+ <div class="card"><h2>Saved so far<span id="omtot" class="mute small"></span></h2><div id="omsum"></div><p class="mute small" id="omdir" style="margin:10px 0 0"></p><div class="mrow" style="margin:12px 0 0"><button class="chip" id="omclear" style="display:none">Delete everything saved for this layer</button></div></div>
 </div>
 <div id="all" class="view"><div class="all" id="allbox"></div></div>
 </main>
@@ -200,7 +231,7 @@ function horizon(){
  g.fillStyle=col.sky;g.fillRect(-W,-H*2,W*2,H*2);g.fillStyle=col.gnd;g.fillRect(-W,0,W*2,H*2);
  g.strokeStyle='#fff';g.fillStyle='#fff';g.lineWidth=2;g.font='13px sans-serif';
  for(let d=-30;d<=30;d+=10){const y=-d*px,w=d?40:W;g.beginPath();g.moveTo(-w,y);g.lineTo(w,y);g.stroke();if(d)g.fillText(Math.abs(d),w+6,y+4)}
- g.restore();g.strokeStyle='#FAC200';g.lineWidth=6;g.lineCap='round';g.beginPath();
+ g.restore();g.strokeStyle='#F6C343';g.lineWidth=5;g.lineCap='round';g.beginPath();
  g.moveTo(W/2-70,H/2);g.lineTo(W/2-22,H/2);g.lineTo(W/2-22,H/2+12);g.moveTo(W/2+70,H/2);g.lineTo(W/2+22,H/2);g.lineTo(W/2+22,H/2+12);g.stroke();
 }
 
@@ -211,8 +242,8 @@ function mapUpdate(){
  if(window.L){
   $('cv').style.display='none';$('lf').style.display='block';
   if(!lm){lm=L.map('lf').setView([la,lo],16);setLayer();
-   ll=L.polyline([],{color:'#0074C8',weight:5}).addTo(lm);lp=L.marker([la,lo],{icon:L.divIcon({className:'',iconSize:[34,34],iconAnchor:[17,17],html:'<div class="pl"><svg viewBox="0 0 24 24" width="34" height="34"><path d="M12 2l3 9 7 3v2l-7-1-1 5 2 2v1l-4-1-4 1v-1l2-2-1-5-7 1v-2l7-3z" fill="#FAC200" stroke="#00274A" stroke-width="1.5"/></svg></div>'})}).addTo(lm);
-   L.circleMarker(P[0],{radius:7,color:'#fff',weight:2,fillColor:'#447A1F',fillOpacity:1}).addTo(lm);
+   ll=L.polyline([],{color:'#2F80ED',weight:4,opacity:.9}).addTo(lm);lp=L.marker([la,lo],{icon:L.divIcon({className:'',iconSize:[34,34],iconAnchor:[17,17],html:'<div class="pl"><svg viewBox="0 0 24 24" width="34" height="34"><path d="M12 2l3 9 7 3v2l-7-1-1 5 2 2v1l-4-1-4 1v-1l2-2-1-5-7 1v-2l7-3z" fill="#F6C343" stroke="#1B2430" stroke-width="1.5"/></svg></div>'})}).addTo(lm);
+   L.circleMarker(P[0],{radius:7,color:'#fff',weight:2,fillColor:'#2DA86B',fillOpacity:1}).addTo(lm);
    lm.on('dragstart',()=>{follow=false;$('fol').textContent='Follow plane'})}
   ll.setLatLngs(P);mapFrame();
  }else{
@@ -223,8 +254,8 @@ function mapUpdate(){
   const sc=Math.min(W,H)/2/ext,X=p=>W/2+p*sc,Y=q=>H/2-q*sc,st=[50,100,200,500,1000,2000,5000,10000,20000].find(s=>ext/s<=4)||50000;
   g.strokeStyle=g.fillStyle=getComputedStyle(document.body).getPropertyValue('--mute');g.lineWidth=1;g.font='12px sans-serif';
   for(let s=st;s<=ext;s+=st){g.beginPath();g.arc(W/2,H/2,s*sc,0,7);g.stroke();g.fillText(dlab(s),W/2+s*sc+4,H/2-4)}
-  g.strokeStyle='#0074C8';g.lineWidth=5;g.beginPath();Q.forEach(([p,q],i)=>i?g.lineTo(X(p),Y(q)):g.moveTo(X(p),Y(q)));g.stroke();
-  const[p,q]=Q[Q.length-1];g.fillStyle='#FAC200';g.beginPath();g.arc(X(p),Y(q),10,0,7);g.fill();
+  g.strokeStyle='#2F80ED';g.lineWidth=4;g.beginPath();Q.forEach(([p,q],i)=>i?g.lineTo(X(p),Y(q)):g.moveTo(X(p),Y(q)));g.stroke();
+  const[p,q]=Q[Q.length-1];g.fillStyle='#F6C343';g.beginPath();g.arc(X(p),Y(q),10,0,7);g.fill();
  }
 }
 
@@ -305,83 +336,112 @@ function applyTheme(){
 }
 $('theme').onclick=()=>{pref={auto:'light',light:'dark',dark:'auto'}[pref];try{localStorage.setItem('theme',pref)}catch(e){}applyTheme()};
 matchMedia('(prefers-color-scheme:dark)').addEventListener('change',applyTheme);
-// ---- Offline maps manager: see what is downloaded, pick an area and a level of detail ----
-let om,omT,omCov,omRect,omH1,omH2,omLayer='street',omSum={},omTimer,omPoll,omTok=0;
-const mpp=(z,lat)=>156543.03*Math.cos(lat*Math.PI/180)/2**z;
-const zopts=Array.from({length:15},(_,i)=>`<option>${i+3}</option>`).join('');
-$('omz0').innerHTML=zopts;$('omz1').innerHTML=zopts;$('omz0').value=13;$('omz1').value=16;
+// ---- Offline maps manager: frame an area on the map, pick a level of detail in plain words, download ----
+let om,omT,omCov,omLayer='street',omSum={},omTimer,omPoll,omTok=0,covTok=0,job_running=false,omNote='';
+const PRESETS=[['8-12','Overview','Towns, highways, lakes'],['12-15','Standard','Streets, fields, runways'],['14-17','Detailed','Buildings, trees, paths']];
+const zname=z=>z<=9?'region':z<=12?'towns':z<=14?'neighbourhoods':z<=16?'streets':'buildings';
+const fmtMB=b=>b<52429?'under 0.1 MB':b<10485760?(b/1048576).toFixed(1)+' MB':Math.round(b/1048576)+' MB';
+const zopts=Array.from({length:15},(_,i)=>`<option value="${i+3}">${i+3} · ${zname(i+3)}</option>`).join('');
+$('omz0').innerHTML=zopts;$('omz1').innerHTML=zopts;
+$('omopts').innerHTML=PRESETS.map(([v,n,d],i)=>`<label class="opt${i===1?' on':''}"><input type="radio" name="omd" value="${v}"${i===1?' checked':''}><b>${n}</b><span>${d}</span><i></i></label>`).join('');
+const omRange=()=>{const r=document.querySelector('[name=omd]:checked');return r?r.value.split('-').map(Number):[+$('omz0').value,+$('omz1').value]};
+function omSync(){const[a,b]=omRange();$('omz0').value=a;$('omz1').value=b;for(const l of document.querySelectorAll('.opt'))l.classList.toggle('on',l.querySelector('input').checked)}
+omSync();
 function omSetLayer(){
  if(omT)om.removeLayer(omT);
  omT=L.tileLayer('/tiles/'+omLayer+'/{z}/{x}/{y}',{maxZoom:19,attribution:omLayer==='street'?'© OpenStreetMap':'Tiles © Esri'}).addTo(om);
  $('om').classList.toggle('street',omLayer==='street');
 }
+// The blue frame is inset 12% from each edge of the map (see #omframe), so the area to save is the same 12% inset in pixels.
+function omBounds(){const s=om.getSize();return L.latLngBounds(om.containerPointToLatLng([s.x*.12,s.y*.88]),om.containerPointToLatLng([s.x*.88,s.y*.12]))}
+const omQ=(z0,z1)=>{const b=omBounds();return `layer=${omLayer}&w=${b.getWest()}&s=${b.getSouth()}&e=${b.getEast()}&n=${b.getNorth()}&z0=${z0}&z1=${z1}`};
 function omInit(){
  if(om)return;
- if(!window.L){$('om').innerHTML='<p style="padding:20px">The map library did not load, so the offline map manager is unavailable.</p>';return}
- om=L.map('om').setView(P.length?P[P.length-1]:[64.8378,-147.7164],12);
+ if(!window.L){$('omwrap').innerHTML='<p style="padding:20px">The map library did not load, so the offline map manager is unavailable.</p>';return}
+ om=L.map('om').setView(P.length?P[P.length-1]:[64.8378,-147.7164],13);
  omSetLayer();omCov=L.layerGroup().addTo(om);
- const b=om.getBounds().pad(-.3),mk=ll=>L.marker(ll,{draggable:true,icon:L.divIcon({className:'',iconSize:[26,26],iconAnchor:[13,13],html:'<div class="hnd"></div>'})}).addTo(om);
- omRect=L.rectangle(b,{color:'#0074C8',weight:2,fillOpacity:.12,interactive:false}).addTo(om);
- omH1=mk(b.getNorthWest());omH2=mk(b.getSouthEast());
- const upd=()=>{omRect.setBounds(L.latLngBounds(omH1.getLatLng(),omH2.getLatLng()));omPlan()};
- omH1.on('drag',upd);omH2.on('drag',upd);
- om.on('zoomend',()=>{if($('omcz').value==='auto')drawCov()});
+ om.on('moveend',()=>{omNote='';omPlan()});om.on('zoomend',drawCov);
  omPlan();
 }
-function omUseView(){const b=om.getBounds().pad(-.3);omH1.setLatLng(b.getNorthWest());omH2.setLatLng(b.getSouthEast());omRect.setBounds(b);omPlan()}
-const omQuery=()=>{const b=omRect.getBounds();return `layer=${omLayer}&w=${b.getWest()}&s=${b.getSouth()}&e=${b.getEast()}&n=${b.getNorth()}&z0=${$('omz0').value}&z1=${$('omz1').value}`};
+// Ask the hub how big each option would be for the framed area, and show it on the option itself.
 function omPlan(){
  clearTimeout(omTimer);
  omTimer=setTimeout(async()=>{
-  if(!om)return;const z0=+$('omz0').value,z1=+$('omz1').value,lat=om.getCenter().lat;
-  if(z0>z1){$('omest').textContent='Least detail cannot be higher than most detail.';$('omgo').disabled=true;return}
-  const r=await fetch('/precache/plan?'+omQuery()).then(r=>r.json()).catch(()=>null);
-  if(!r||r.error){$('omest').textContent=r?.error||'Could not reach the hub';$('omgo').disabled=true;return}
-  const avg=omSum[omLayer]?.avg||(omLayer==='sat'?30000:15000),mb=(r.missing??r.total)*avg/1048576,over=r.total>r.limit;
-  $('omest').innerHTML=r.total.toLocaleString()+' tiles'+(r.missing!=null?' · '+r.missing.toLocaleString()+' new':'')+' · about '+mb.toFixed(1)+' MB · finest detail ≈ '+mpp(z1,lat).toFixed(1)+' m per pixel'+
-   (over?`<br><b>Over the limit of ${r.limit} tiles per download.</b> Shrink the area or lower the most-detail level.`:r.missing===0?'<br>Everything here is already downloaded.':'');
-  $('omgo').disabled=over||r.missing===0||job_running;
+  if(!om)return;const tok=++omTok,avg=omSum[omLayer]?.avg||(omLayer==='sat'?30000:15000);
+  const[z0,z1]=omRange(),ranges=PRESETS.map(p=>p[0].split('-').map(Number)).concat([[z0,z1]]);
+  const rs=await Promise.all(ranges.map(([a,b])=>fetch('/precache/plan?'+omQ(a,b)).then(r=>r.json()).catch(()=>null)));
+  if(tok!==omTok)return;
+  const n=r=>r.missing??r.total,over=r=>r.limit>0&&r.total>r.limit,bad=r=>!r||r.error||over(r);
+  const words=r=>!r?'Hub unreachable':r.error?r.error:over(r)?`Too big: ${r.total.toLocaleString()} tiles (limit ${r.limit.toLocaleString()})`:r.missing===0?'Already saved':`${n(r).toLocaleString()} tiles · ${fmtMB(n(r)*avg)}`;
+  document.querySelectorAll('.opt').forEach((l,i)=>{l.querySelector('i').textContent=words(rs[i]);l.classList.toggle('over',bad(rs[i]))});
+  const r=rs[3],custom=!document.querySelector('[name=omd]:checked');
+  $('omcust').textContent=custom?words(r):'';
+  if(job_running)return;
+  const saved=r&&!r.error?(r.missing==null?null:r.total-r.missing):0;
+  $('omdel').style.display=saved===0?'none':'';
+  $('omdel').textContent=saved?`Delete ${saved.toLocaleString()} saved tiles in this frame`:'Delete saved tiles in this frame';
+  $('omgo').disabled=bad(r)||r.missing===0;
+  $('omgo').textContent=bad(r)?'Download':r.missing===0?'Already saved':`Download ${n(r).toLocaleString()} tiles · ${fmtMB(n(r)*avg)}`;
+  $('omst').textContent=!r?'Could not reach the hub':r.error?r.error:over(r)?'Too big for one download. Zoom the map in, or choose less detail.':omNote;
+  if(r&&!r.error)$('omfoot').textContent=(r.limit>0?`Each download is capped at ${r.limit.toLocaleString()} tiles on this hub (start it with MAX_TILES to change that). `:'Downloads are not capped on this hub (MAX_TILES=0). ')+'Note that OpenStreetMap\u2019s tile policy does not allow pre-downloading for offline use at all, and Esri\u2019s standard imagery is not meant for it either, so for real offline coverage point the hub at your own tile source. Tiles you look at on the Map tab are kept automatically, which both services allow.';
  },250);
 }
-let job_running=false;
 async function omRefresh(){
  if(!om)return;
  const sm=await fetch('/cache/summary?layer='+omLayer).then(r=>r.json()).catch(()=>null);if(!sm||sm.error)return;
  omSum[omLayer]=sm;
- const zs=Object.keys(sm.zooms).map(Number).sort((a,b)=>a-b),cur=$('omcz').value,lat=om.getCenter().lat;
- $('omcz').innerHTML='<option value="auto">Auto</option>'+zs.map(z=>`<option value="${z}">z${z}</option>`).join('');
- $('omcz').value=[...$('omcz').options].some(o=>o.value===cur)?cur:'auto';
- const tot=zs.reduce((a,z)=>a+sm.zooms[z].bytes,0);
- $('omsum').innerHTML=zs.length?zs.map(z=>`<div class="crow"><span>Zoom ${z} · about ${mpp(z,lat).toFixed(1)} m per pixel</span><b>${sm.zooms[z].tiles.toLocaleString()} tiles · ${(sm.zooms[z].bytes/1048576).toFixed(1)} MB</b></div>`).join('')+`<div class="crow"><span>Total</span><b>${(tot/1048576).toFixed(1)} MB</b></div>`:'Nothing downloaded for this layer yet.';
+ const zs=Object.keys(sm.zooms).map(Number).sort((a,b)=>a-b),tot=zs.reduce((a,z)=>a+sm.zooms[z].bytes,0),nt=zs.reduce((a,z)=>a+sm.zooms[z].tiles,0);
+ $('omtot').textContent=zs.length?`${nt.toLocaleString()} tiles · ${fmtMB(tot)}`:'';
+ $('omsum').innerHTML=zs.length?zs.map(z=>`<div class="crow"><span>Zoom ${z} · ${zname(z)}</span><b>${sm.zooms[z].tiles.toLocaleString()} tiles · ${fmtMB(sm.zooms[z].bytes)}</b></div>`).join(''):
+  '<p class="mute" style="margin:0">Nothing saved for this layer yet. Tiles you look at on the Map tab are kept automatically; use the download above to save a whole area before a trip.</p>';
+ $('omclear').style.display=zs.length?'':'none';
+ $('omdir').textContent='Stored on the hub computer in '+sm.dir+' — they stay there across restarts and reboots.';
  drawCov();omPlan();
 }
+// Green overlay of saved tiles, at whichever saved zoom is closest to the map's current zoom.
 async function drawCov(){
- if(!om)return;const tok=++omTok;omCov.clearLayers();$('omzs').textContent='';
- if(!$('omcov').checked)return;
- const zs=[...$('omcz').options].map(o=>+o.value).filter(x=>!isNaN(x));if(!zs.length)return;
- const v=$('omcz').value,z=v==='auto'?zs.reduce((a,b)=>Math.abs(b-om.getZoom())<Math.abs(a-om.getZoom())?b:a):+v;
+ if(!om)return;const tok=++covTok;omCov.clearLayers();$('omzs').textContent='';
+ const zs=Object.keys(omSum[omLayer]?.zooms||{}).map(Number);
+ if(!$('omcov').checked||!zs.length)return;
+ const mz=om.getZoom(),z=zs.reduce((a,b)=>Math.abs(b-mz)<Math.abs(a-mz)?b:a);
  const r=await fetch(`/cache/coverage?layer=${omLayer}&z=${z}`).then(r=>r.json()).catch(()=>null);
- if(!r||r.error||tok!==omTok)return;
+ if(!r||r.error||tok!==covTok)return;
  const n=2**z,lon=x=>x/n*360-180,lat=y=>Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI,rend=L.canvas();
- for(const[x,y]of r.tiles.slice(0,6000))L.rectangle([[lat(y+1),lon(x)],[lat(y),lon(x+1)]],{renderer:rend,stroke:false,fillColor:'#53B390',fillOpacity:.5,interactive:false}).addTo(omCov);
- $('omzs').textContent='Showing zoom '+z+(r.tiles.length>6000?' (first 6000 tiles)':'');
+ for(const[x,y]of r.tiles.slice(0,6000))L.rectangle([[lat(y+1),lon(x)],[lat(y),lon(x+1)]],{renderer:rend,stroke:false,fillColor:'#2DA86B',fillOpacity:.45,interactive:false}).addTo(omCov);
+ $('omzs').textContent=`Green = saved at zoom ${z} (${zname(z)})`+(r.tiles.length>6000?', first 6000 tiles':'');
 }
 $('omgo').onclick=async()=>{
- const r=await fetch('/precache?'+omQuery()).then(r=>r.json()).catch(()=>({error:'Could not reach the hub'}));
+ const[z0,z1]=omRange();
+ const r=await fetch('/precache?'+omQ(z0,z1)).then(r=>r.json()).catch(()=>({error:'Could not reach the hub'}));
  if(r.error){$('omst').textContent=r.error;return}
- job_running=true;$('omstop').style.display='';$('omgo').disabled=true;
+ job_running=true;omNote='';$('omstop').style.display='';$('omdel').style.display='none';$('omgo').disabled=true;$('ompbw').style.display='';$('ompb').style.width='0';$('omst').textContent='';
  clearInterval(omPoll);
  omPoll=setInterval(async()=>{
   const st=await fetch('/precache/status').then(r=>r.json()).catch(()=>null);if(!st)return;
   $('ompb').style.width=(st.total?st.done/st.total*100:0)+'%';
-  $('omst').textContent=st.running?`Downloading ${st.done} of ${st.total}`:(st.cancel?'Stopped':'Done')+(st.failed?` · ${st.failed} tiles failed (is the hub online?)`:'');
-  if(!st.running){clearInterval(omPoll);job_running=false;$('omstop').style.display='none';omRefresh()}
+  $('omgo').textContent=`Downloading ${st.done} of ${st.total}…`;
+  if(!st.running){clearInterval(omPoll);job_running=false;$('omstop').style.display='none';$('ompbw').style.display='none';
+   omNote=(st.cancel?`Stopped. The ${st.done-st.failed} tiles that finished are kept; press Download again for the rest. `:'Saved. ')+(st.failed?`${st.failed} tiles could not be downloaded (is this computer online?).`:st.cancel?'':'This area now works without internet.');$('omst').textContent=omNote;
+   omRefresh()}
  },700);
 };
 $('omstop').onclick=()=>fetch('/precache/cancel').catch(()=>{});
+$('omdel').onclick=async()=>{
+ const[z0,z1]=omRange();
+ if(!confirm('Delete the saved tiles inside the frame at this level of detail? You can download them again later.'))return;
+ const r=await fetch('/cache/clear?'+omQ(z0,z1),{method:'POST'}).then(r=>r.json()).catch(()=>({error:'Could not reach the hub'}));
+ omNote=r.error||`Deleted ${(r.deleted||0).toLocaleString()} saved tiles from this frame.`;$('omst').textContent=omNote;omRefresh();
+};
+$('omclear').onclick=async()=>{
+ if(!confirm(`Delete every saved ${omLayer==='street'?'street':'satellite'} tile, for all areas? The map will need internet again until they are downloaded afresh.`))return;
+ const r=await fetch('/cache/clear?layer='+omLayer,{method:'POST'}).then(r=>r.json()).catch(()=>({error:'Could not reach the hub'}));
+ omNote=r.error||'Saved tiles deleted.';$('omst').textContent=omNote;omRefresh();
+};
 for(const b of document.querySelectorAll('[data-ml]'))b.onclick=()=>{omLayer=b.dataset.ml;for(const x of document.querySelectorAll('[data-ml]'))x.classList.toggle('on',x===b);if(om){omSetLayer();omRefresh()}};
-for(const b of document.querySelectorAll('[data-preset]'))b.onclick=()=>{const[a,c]=b.dataset.preset.split('-');$('omz0').value=a;$('omz1').value=c;omPlan()};
-$('omcov').onchange=drawCov;$('omcz').onchange=drawCov;$('omz0').onchange=omPlan;$('omz1').onchange=omPlan;$('omview').onclick=()=>om&&omUseView();
+$('omopts').addEventListener('change',()=>{omSync();omPlan()});
+$('omz0').onchange=$('omz1').onchange=e=>{for(const r of document.querySelectorAll('[name=omd]'))r.checked=false;
+ if(+$('omz0').value>+$('omz1').value)(e.target===$('omz0')?$('omz1'):$('omz0')).value=e.target.value;omSync();omPlan()};
+$('omcov').onchange=drawCov;
 $('nav').addEventListener('click',e=>{if(e.target.dataset.v==='maps'){omInit();setTimeout(()=>{if(om){om.invalidateSize();omRefresh()}},80)}});
 // ---- QR code: scan with a phone to open this dashboard ----
 function drawQR(url){
@@ -499,7 +559,7 @@ function renderExtra(){
  if(B){cv=B.voltages.filter(v=>v>0&&v<65535).map(v=>v/1000);src='per-cell values from the flight controller'}
  if(!cv.length&&ss&&ss.voltage_battery>0&&ss.voltage_battery<65535){const pk=ss.voltage_battery/1000;if(!cells)cells=Math.max(1,Math.ceil(pk/4.25));cv=Array(cells).fill(pk/cells);src='pack voltage ÷ cells (average only)'}
  $('cellsub').textContent=cv.length?cv.length+'S · '+src:'No battery data yet';
- $('cells').innerHTML=cv.map((v,i)=>{const pc=Math.max(4,Math.min(100,(v-3)/1.2*100)),c=v>3.85?'#53B390':v>3.55?'#FAC200':'#E31F26';
+ $('cells').innerHTML=cv.map((v,i)=>{const pc=Math.max(4,Math.min(100,(v-3)/1.2*100)),c=v>3.85?'#2DA86B':v>3.55?'#E0A526':'#D93025';
   return `<div class="cell"><b>${v.toFixed(2)}</b><i style="height:${pc}%;background:${c}"></i><span>C${i+1}</span></div>`}).join('');
  const g=(k,fn)=>MX[k]==null?'–':fn(MX[k]),dd=dist(St.odo),ft=St.t0?(Date.now()-St.t0)/1000:0;
  const S=[['Max ground speed',g('gs',v=>CV.spd(v).toFixed(0)),UN.spd()],['Max airspeed',g('as',v=>CV.spd(v).toFixed(0)),UN.spd()],['Max altitude',g('alt',v=>CV.len(v).toFixed(0)),UN.len()],

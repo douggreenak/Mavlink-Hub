@@ -26,7 +26,7 @@ before(async () => {
   process.env.TILE_SAT_URL = `http://127.0.0.1:${originPort}/redir/{z}/{y}/{x}`;
   process.env.MAX_TILES = '40';
   S = require('../server.js');
-  hub = await S.start({ udpPort: 0, webPort: 0, host: '127.0.0.1' });
+  hub = await S.start({ udpPort: 0, webPort: 0, host: '127.0.0.1', migrate: false });
   base = `http://127.0.0.1:${hub.web.address().port}`;
 });
 after(async () => { await hub.close(); origin.close(); });
@@ -179,12 +179,28 @@ test('bulk download: runs, reports progress, refuses a second job, then shows up
   assert.equal(sum.zooms['1'].tiles, 4);
   assert.equal(sum.zooms['1'].bytes, 4 * PNG.length);
   assert.equal(sum.avg, PNG.length);
+  assert.equal(sum.dir, path.join(process.env.DATA_DIR, 'cache'));
   assert.deepEqual(await getJSON('/cache/summary?layer=moon'), { error: 'Bad layer' });
 
   const cov = await getJSON('/cache/coverage?layer=street&z=1');
   assert.equal(cov.z, 1);
   assert.deepEqual(cov.tiles.map((t) => t.join('/')).sort(), ['0/0', '0/1', '1/0', '1/1']);
   assert.deepEqual(await getJSON('/cache/coverage?layer=street&z=25'), { error: 'Bad request' });
+});
+
+test('POST /cache/clear with an area removes just that area at those zooms', async () => {
+  // zoom 1 has all four tiles saved; the western hemisphere is x=0 -> two of them
+  const r = await getJSON('/precache/clear?layer=street&w=-180&e=-1&s=-85&n=85&z0=1&z1=1', { method: 'POST' }).catch(() => null);
+  assert.equal(r, null, 'wrong path is not a clear endpoint');
+  const del = await getJSON('/cache/clear?layer=street&w=-180&e=-1&s=-85&n=85&z0=1&z1=1', { method: 'POST' });
+  assert.deepEqual(del, { ok: true, deleted: 2 });
+  const cov = await getJSON('/cache/coverage?layer=street&z=1');
+  assert.deepEqual(cov.tiles.map((t) => t.join('/')).sort(), ['1/0', '1/1']);
+  assert.deepEqual(await getJSON('/precache/plan?layer=street&w=-180&e=180&s=-85&n=85&z0=1&z1=1'), { total: 4, missing: 2, limit: 40 });
+  assert.deepEqual(await getJSON('/cache/clear?layer=street&w=0&e=1&s=0&n=1&z0=9&z1=1', { method: 'POST' }), { error: 'Bad request' });
+  // put them back for the tests that follow
+  await getJSON('/precache?layer=street&w=-180&e=180&s=-85&n=85&z0=1&z1=1');
+  await until(async () => !(await getJSON('/precache/status')).running);
 });
 
 test('bulk download counts failures and can be cancelled', async () => {
@@ -203,4 +219,31 @@ test('bulk download counts failures and can be cancelled', async () => {
   const st = await getJSON('/precache/status');
   assert.equal(st.cancel, true);
   assert.ok(st.done >= 1 && st.done < 16, `stopped early (done=${st.done})`);
+  // Everything that finished before the cancel stays on disk, and a new plan only asks for the rest.
+  const onDisk = (await getJSON('/cache/coverage?layer=street&z=2')).tiles.length;
+  assert.equal(onDisk, st.done - st.failed, 'finished tiles were kept');
+  const again = await getJSON('/precache/plan?layer=street&w=-180&e=180&s=-85&n=85&z0=2&z1=2');
+  assert.deepEqual(again, { total: 16, missing: 16 - onDisk, limit: 40 });
+});
+
+test('POST /cache/clear deletes one layer\'s saved tiles; GET is not a way to do it', async () => {
+  assert.ok(Object.keys((await getJSON('/cache/summary?layer=street')).zooms).length > 0, 'there is something to delete');
+  assert.equal((await get('/cache/clear?layer=street')).status, 404);
+  assert.deepEqual(await getJSON('/cache/clear?layer=moon', { method: 'POST' }), { error: 'Bad layer' });
+  assert.deepEqual(await getJSON('/cache/clear?layer=street', { method: 'POST' }), { ok: true });
+  assert.deepEqual((await getJSON('/cache/summary?layer=street')).zooms, {});
+  assert.ok(!fs.existsSync(path.join(process.env.DATA_DIR, 'cache', 'tiles', 'street')));
+  assert.deepEqual(await getJSON('/cache/clear?layer=street', { method: 'POST' }), { ok: true }, 'clearing an empty layer is fine');
+});
+
+test('saved tiles are still there after the hub is stopped and started again', async () => {
+  assert.deepEqual(await getJSON('/precache?layer=street&w=-180&e=180&s=-85&n=85&z0=0&z1=0'), { total: 1 });
+  await until(async () => !(await getJSON('/precache/status')).running);
+  await hub.close();
+  hub = await S.start({ udpPort: 0, webPort: 0, host: '127.0.0.1', migrate: false });
+  base = `http://127.0.0.1:${hub.web.address().port}`;
+  const sum = await getJSON('/cache/summary?layer=street');
+  assert.equal(sum.zooms['0'].tiles, 1);
+  assert.deepEqual(await getJSON('/precache/plan?layer=street&w=-180&e=180&s=-85&n=85&z0=0&z1=0'), { total: 1, missing: 0, limit: 40 });
+  assert.equal(hits['/0/0/0.png'], 1, 'served from disk, not re-downloaded');
 });

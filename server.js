@@ -2,26 +2,65 @@
 // streams raw bytes to browsers, and caches map tiles so viewers need no internet.
 // Receive-only toward the plane. Works on any recent Node. No npm install.
 //
-// Optional environment variables:
-//   UDP_PORT (14550)   WEB_PORT (8080)   MAX_TILES (500 tiles per download)
-//   DATA_DIR            - where cache/ and settings.json live (default: next to this file)
+// Optional settings, as environment variables or lines in a hub.env file next to this file:
+//   UDP_PORT (14550)   WEB_PORT (8080)   MAX_TILES (500 tiles per download; 0 = no limit)
+//   DATA_DIR            - where cache/ and settings.json live (default: the per-user app folder,
+//                         %APPDATA%\MAVLink Hub on Windows, ~/Library/Application Support/MAVLink Hub on a Mac)
 //   TILE_STREET_URL / TILE_SAT_URL  - your own tile source, e.g. https://example.com/{z}/{x}/{y}.png
 const dgram = require('dgram'), http = require('http'), https = require('https'), fs = require('fs');
 const os = require('os'), path = require('path');
+
+// KEY=VALUE lines from a settings file; real environment variables win over the file.
+function applyEnvFile(file, env = process.env) {
+  let text; try { text = fs.readFileSync(file, 'utf8'); } catch (e) { return env; }
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!m || line.trim().startsWith('#')) continue;
+    if (!(m[1] in env)) env[m[1]] = m[2].replace(/\s+#.*$/, '').replace(/^(["'])(.*)\1$/, '$2');
+  }
+  return env;
+}
+applyEnvFile(path.join(__dirname, 'hub.env'));
+
+// Where saved maps and settings live when DATA_DIR is not set: the usual per-user app folder,
+// so they outlive this checkout and survive reboots and updates.
+function defaultDataDir() {
+  const home = os.homedir();
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'MAVLink Hub');
+  if (process.platform === 'win32') return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'MAVLink Hub');
+  return path.join(process.env.XDG_DATA_HOME || path.join(home, '.local', 'share'), 'mavlink-hub');
+}
 const UDP_PORT = +process.env.UDP_PORT || 14550;
 const WEB_PORT = +process.env.WEB_PORT || 8080;
-const MAX_TILES = +process.env.MAX_TILES || 500;
-const DATA_DIR = process.env.DATA_DIR || __dirname;
+const MAX_TILES = (process.env.MAX_TILES || '').trim() === '' ? 500 : Math.max(0, Math.floor(+process.env.MAX_TILES) || 0); // 0 = unlimited
+const DATA_DIR = process.env.DATA_DIR || defaultDataDir();
 const CACHE = path.join(DATA_DIR, 'cache');
+
+// Earlier versions kept cache/ and settings.json next to server.js. Move them once, so nothing is lost.
+function migrateOldData(from = __dirname, to = DATA_DIR, log = console.log) {
+  if (path.resolve(from) === path.resolve(to)) return false;
+  let moved = false;
+  for (const name of ['cache', 'settings.json']) {
+    const src = path.join(from, name), dst = path.join(to, name);
+    if (!fs.existsSync(src) || fs.existsSync(dst)) continue;
+    fs.mkdirSync(to, { recursive: true });
+    try { fs.renameSync(src, dst); }
+    catch (e) { fs.cpSync(src, dst, { recursive: true }); fs.rmSync(src, { recursive: true, force: true }); }
+    moved = true;
+  }
+  if (moved) log(`Moved saved maps and settings from ${from} to ${to}`);
+  return moved;
+}
 const PRECACHE_MAX_ZOOM = 17;   // finest level a bulk download may ask for
 const TILE_MAX_ZOOM = 19;       // finest level the map views may request one tile at a time
 const DOWNLOAD_TIMEOUT = 15000; // ms before an unanswered tile request is abandoned
 const viewers = new Set();
 
-// Settings shared by every connected laptop (units + hidden tiles), saved next to this file.
+// Settings shared by every connected laptop (units + hidden tiles), saved in DATA_DIR.
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 let settings = { units: 'metric', hidden: [] };
-try { settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) }; } catch (e) {}
+function loadSettings() { try { settings = { units: 'metric', hidden: [], ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) }; } catch (e) {} }
+loadSettings();
 const settingsEvent = () => `event: settings\ndata: ${JSON.stringify(settings)}\n\n`;
 
 // Send one SSE chunk to every dashboard. A viewer that has stopped reading (sleeping laptop,
@@ -109,12 +148,32 @@ function summary(l) {
     }
     if (n) { zooms[z] = { tiles: n, bytes: b }; tiles += n; bytes += b; }
   }
-  return { layer: l, zooms, avg: tiles ? Math.round(bytes / tiles) : 0 };
+  return { layer: l, zooms, avg: tiles ? Math.round(bytes / tiles) : 0, dir: CACHE };
 }
 function coverage(l, z) {
   const out = [], base = path.join(CACHE, 'tiles', l, String(z));
   for (const x of ls(base)) for (const y of ls(path.join(base, x))) { out.push([+x, +y]); if (out.length >= 20000) return out; }
   return out;
+}
+
+// Delete the saved tiles inside a set of ranges (the same shape parsePlan produces), walking only
+// what is on disk so a huge area costs no more than its saved tiles. Returns how many were removed.
+function clearArea(l, rs) {
+  let n = 0;
+  for (const r of rs) {
+    const zdir = path.join(CACHE, 'tiles', l, String(r.z));
+    for (const x of ls(zdir)) {
+      if (+x < r.x0 || +x > r.x1 || isNaN(+x)) continue;
+      const xdir = path.join(zdir, x);
+      for (const y of ls(xdir)) {
+        if (+y < r.y0 || +y > r.y1 || isNaN(+y)) continue;
+        try { fs.unlinkSync(path.join(xdir, y)); n++; } catch (e) {}
+      }
+      try { fs.rmdirSync(xdir); } catch (e) {}
+    }
+    try { fs.rmdirSync(zdir); } catch (e) {}
+  }
+  return n;
 }
 
 let job = { done: 0, total: 0, running: false, failed: 0, cancel: false };
@@ -150,7 +209,7 @@ function handle(req, res) {
     if (p.error) return json(res, { error: p.error });
     if (job.running) return json(res, { error: 'A map download is already running' });
     const total = countOf(p.rs);
-    if (total > MAX_TILES) return json(res, { error: `That is ${total} tiles; the limit is ${MAX_TILES}. Shrink the area or lower the max detail.` });
+    if (MAX_TILES && total > MAX_TILES) return json(res, { error: `That is ${total} tiles; the limit is ${MAX_TILES} per download (set MAX_TILES to change it). Shrink the area or lower the detail.` });
     const list = listOf(p.rs);
     job = { done: 0, total: list.length, running: true, failed: 0, cancel: false };
     (async () => {
@@ -174,6 +233,16 @@ function handle(req, res) {
   } else if (url === '/cache/coverage') {
     const q = new URLSearchParams(qs), l = q.get('layer'), z = Math.floor(+q.get('z'));
     json(res, TILES[l] && z >= 0 && z <= TILE_MAX_ZOOM ? { z, tiles: coverage(l, z) } : { error: 'Bad request' });
+  } else if (url === '/cache/clear' && req.method === 'POST') {
+    // With only ?layer= this removes the whole layer; with the same w/s/e/n/z0/z1 as a download
+    // plan it removes just that area at those zooms.
+    const q = new URLSearchParams(qs), l = q.get('layer');
+    if (!TILES[l]) return json(res, { error: 'Bad layer' });
+    if (job.running) return json(res, { error: 'Wait for the running download to finish first' });
+    if (!q.has('w')) { fs.rmSync(path.join(CACHE, 'tiles', l), { recursive: true, force: true }); return json(res, { ok: true }); }
+    const p = parsePlan(qs);
+    if (p.error) return json(res, { error: p.error });
+    json(res, { ok: true, deleted: clearArea(p.l, p.rs) });
   } else if (url === '/info') {
     json(res, { urls: addresses(req.socket.localPort) });
   } else if (url === '/settings' && req.method === 'GET') {
@@ -213,7 +282,11 @@ function addresses(port) {
 }
 
 // Bind the UDP listener and the web server. Resolves with both plus a close() for tests.
-function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0' } = {}) {
+// migrate: move cache/ and settings.json from beside server.js into DATA_DIR. Only when DATA_DIR is
+// the default, i.e. the upgrade case; a DATA_DIR someone set on purpose is left exactly as it is.
+function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migrate = !process.env.DATA_DIR } = {}) {
+  if (migrate) { try { if (migrateOldData()) loadSettings(); } catch (e) { console.error('Could not move old saved maps:', e.message); } }
+  fs.mkdirSync(DATA_DIR, { recursive: true });
   return new Promise((resolve, reject) => {
     const udp = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     const web = http.createServer(handle);
@@ -238,6 +311,7 @@ function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0' } = {}
 if (require.main === module) {
   start().then(({ udp, web }) => {
     console.log(`Node ${process.version} - listening for MAVLink on UDP ${udp.address().port}`);
+    console.log(`Saved maps and settings: ${DATA_DIR}`);
     console.log('Open the dashboard from any laptop on the same network:');
     for (const u of addresses(web.address().port)) console.log('  ' + u);
   }).catch((e) => {
@@ -247,4 +321,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { start, handle, parsePlan, ranges, countOf, listOf, fill, tileUrl, tileFile, download, addresses, TILES, MAX_TILES, CACHE, SETTINGS_FILE, PRECACHE_MAX_ZOOM, TILE_MAX_ZOOM };
+module.exports = { start, handle, parsePlan, ranges, countOf, listOf, fill, tileUrl, tileFile, download, addresses, applyEnvFile, defaultDataDir, migrateOldData, clearArea, TILES, MAX_TILES, DATA_DIR, CACHE, SETTINGS_FILE, PRECACHE_MAX_ZOOM, TILE_MAX_ZOOM };

@@ -4,3 +4,6 @@ settings.json
 
 node_modules/
 .DS_Store
+
+# Local settings file (copy hub.env.example)
+hub.env
