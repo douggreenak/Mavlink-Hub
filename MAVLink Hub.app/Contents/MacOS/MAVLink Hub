@@ -1,21 +1,31 @@
 #!/bin/bash
 # MAVLink Hub for macOS. Double-click to start the hub and open its control window.
-# The app must stay in the same folder as server.js. It only checks that Node.js is installed, runs launcher.js,
-# and shows a plain dialog if something is wrong.
-HERE="$(cd "$(dirname "$0")/../../.." && pwd)"
-cd "$HERE" || exit 1
+#
+# In the downloadable package everything (the hub and Node.js) is inside this app, so it works wherever macOS runs it
+# from: moved around, in Applications, or in the random read-only place macOS uses for freshly downloaded apps
+# ("app translocation"). In a Git checkout the app has no copy inside and uses the files in the folder beside it.
+# It only checks that Node.js is available, runs launcher.js, and shows a plain dialog if something is wrong.
+# Set MAVLINK_HUB_NO_DIALOG=1 to print problems instead of showing a dialog (used by the tests).
+APP="$(cd "$(dirname "$0")/../.." && pwd)"
+if [ -f "$APP/Contents/Resources/app/server.js" ]; then
+  HERE="$APP/Contents/Resources/app"; RUNTIME="$APP/Contents/Resources/runtime"
+else
+  HERE="$(cd "$APP/.." && pwd)"; RUNTIME="$HERE/runtime"
+fi
+cd "$HERE" 2>/dev/null || exit 1
 
-dialog() { # dialog "message" -> shows a message box
+show() { # show "message" -> a message box (or plain text when dialogs are switched off)
+  if [ -n "$MAVLINK_HUB_NO_DIALOG" ]; then printf '%s\n' "$1" >&2; return; fi
   /usr/bin/osascript -e 'on run argv' -e 'display dialog (item 1 of argv) with title "MAVLink Hub" buttons {"OK"} default button 1 with icon caution' -e 'end run' "$1" >/dev/null 2>&1
 }
 
-# The downloadable package carries its own Node, one build for Apple Silicon and one for Intel; use that first.
-# Clearing the download "quarantine" flag (the user has just approved this app) keeps macOS from asking again about it.
-case "$(uname -m)" in arm64) BUNDLED="$HERE/runtime/node-arm64" ;; *) BUNDLED="$HERE/runtime/node-x64" ;; esac
+# Node.js: the copy bundled with the app first (one build for Apple Silicon, one for Intel).
+# Clearing the download "quarantine" flag (the user has just approved this app) keeps macOS from asking again.
+case "$(uname -m)" in arm64) BUNDLED="$RUNTIME/node-arm64" ;; *) BUNDLED="$RUNTIME/node-x64" ;; esac
 NODE=""
 if [ -f "$BUNDLED" ]; then
   chmod +x "$BUNDLED" 2>/dev/null
-  /usr/bin/xattr -dr com.apple.quarantine "$HERE" 2>/dev/null
+  /usr/bin/xattr -dr com.apple.quarantine "$APP" 2>/dev/null
   NODE="$BUNDLED"
 fi
 
@@ -26,14 +36,18 @@ if [ -z "$NODE" ]; then
   for n in "$HOME"/.nvm/versions/node/*/bin/node "$HOME/.volta/bin/node" "$HOME/.fnm/aliases/default/bin/node"; do [ -x "$n" ] && NODE="$n"; done
 fi
 if [ -z "$NODE" ]; then
-  R="$(/usr/bin/osascript -e 'on run argv' -e 'set r to display dialog (item 1 of argv) with title "MAVLink Hub" buttons {"Not now", "Open nodejs.org"} default button 2 with icon caution' -e 'return button returned of r' -e 'end run' "Node.js is not installed, and the hub needs it.
+  if [ -n "$MAVLINK_HUB_NO_DIALOG" ]; then echo "Node.js is not installed." >&2; exit 1; fi
+  R="$(/usr/bin/osascript -e 'on run argv' -e 'set r to display dialog (item 1 of argv) with title "MAVLink Hub" buttons {"Not now", "Open nodejs.org"} default button 2 with icon caution' -e 'return button returned of r' -e 'end run' "Node.js was not found, and the hub needs it.
 
-Download the LTS version from nodejs.org, install it with the defaults, then open MAVLink Hub again." 2>/dev/null)"
+The downloadable MAVLink Hub includes its own copy, so this folder may be incomplete. Download it again from the project page, or install Node.js (the LTS version) from nodejs.org." 2>/dev/null)"
   [ "$R" = "Open nodejs.org" ] && open "https://nodejs.org"
   exit 1
 fi
-if [ ! -f server.js ]; then dialog "server.js was not found.
+if [ ! -f server.js ]; then
+  show "The hub's files were not found.
 
-Keep MAVLink Hub.app in the same folder as server.js."; exit 1; fi
+If you are using a Git checkout, keep MAVLink Hub.app in the same folder as server.js. Otherwise, download MAVLink Hub again."
+  exit 1
+fi
 
-OUT="$("$NODE" launcher.js 2>&1)" || { dialog "$OUT"; exit 1; }
+OUT="$("$NODE" launcher.js 2>&1)" || { show "$OUT"; exit 1; }

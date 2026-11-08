@@ -80,15 +80,17 @@ below if you want to verify it.)
 
 Same idea, with a Mac app instead of the batch file.
 
-1. Click **Download for Mac** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Mac.zip)) and unzip it
-   somewhere you will keep it. It works on both Apple Silicon and Intel Macs, and carries its own Node.js.
-2. Double-click **MAVLink Hub.app**, which must stay in the same folder as `server.js`. The first
-   time, macOS may refuse because it was downloaded: right-click the app and choose **Open**,
-   then **Open** again. If it still refuses, open *System Settings → Privacy & Security* and
-   click **Open Anyway**, or run `xattr -dr com.apple.quarantine "MAVLink Hub.app"` in a terminal
-   in that folder.
+1. Click **Download for Mac** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Mac.zip)) and unzip it.
+   It works on both Apple Silicon and Intel Macs. Everything, including Node.js, is inside the one app, so
+   drag **MAVLink Hub.app** anywhere you like, for example Applications.
+2. Double-click **MAVLink Hub.app**. The first time, macOS may refuse because it was downloaded: right-click the
+   app and choose **Open**, then **Open** again. If it still refuses, open *System Settings → Privacy & Security*
+   and click **Open Anyway**.
 3. When macOS asks whether to let **node** accept incoming network connections, click **Allow**.
    That is what lets the aircraft's telemetry and your phones reach the hub.
+
+Saved maps, airspace data and settings are kept in `~/Library/Application Support/MAVLink Hub`, never inside the app,
+so replacing the app with a newer one loses nothing.
 
 The Mac app is the only difference; everything below applies to both.
 
@@ -138,8 +140,8 @@ over the packets; close them there, or give the hub a different `UDP_PORT` (see 
 
 - **Save the maps while you still have internet.** Open the *Offline* tab, frame the flying
   area, pick a detail level, and download. Tiles you merely look at on the *Map* tab are
-  kept too. Saved maps live in `%APPDATA%\MAVLink Hub`, outside the program folder, and
-  survive reboots.
+  kept too. Saved maps and airspace data live in `%APPDATA%\MAVLink Hub`, outside the program folder, and
+  survive reboots and updates.
 - **Stop the laptop from sleeping** while plugged in (*Settings → System → Power & battery
   → Screen and sleep*). A sleeping laptop drops the telemetry and the phones lose the page.
 - Consider a **hub.env** file (copy `hub.env.example`) if you want a different port or map
@@ -147,8 +149,9 @@ over the packets; close them there, or give the hub a different `UDP_PORT` (see 
 
 ### Updating
 
-Download the new ZIP, unzip it next to the old folder, copy your `hub.env` across if you made one, and delete
-the old folder. Saved maps and settings are kept elsewhere, so nothing is lost. If you use Git, `git pull`.
+Download the new ZIP and replace the old app (on a Mac, drag the new **MAVLink Hub.app** over the old one; on Windows,
+unzip next to the old folder and delete it). Saved maps, airspace data, settings and `hub.env` are kept in the saved-data
+folder (see *Where saved maps and airspace live*), so nothing is lost. If you use Git, `git pull`.
 
 ### Troubleshooting
 
@@ -207,7 +210,7 @@ folder, and the **Show log** button displays them.
 ## Running it elsewhere
 
 - **Windows without the window**: `start.bat` runs the hub in a plain console.
-- **Mac**: `start.command` does the same in a Terminal window.
+- **Mac from a Git checkout**: `start.command` does the same in a Terminal window.
 - **Linux, or any computer**: `node launcher.js` for the window, or `node server.js` for just the hub.
 - **From a Git checkout** (no bundled Node): install [Node.js](https://nodejs.org) 18 or newer, then run one of the commands
   above. The launchers use the bundled copy in `runtime/` when there is one and fall back to the Node on your computer.
@@ -216,7 +219,7 @@ Then open <http://localhost:8080>.
 
 ### Settings
 
-All optional. Put them in a `hub.env` file next to `server.js` (copy `hub.env.example`) or
+All optional. Put them in a `hub.env` file in the saved-data folder (below), or next to `server.js` in a Git checkout (copy `hub.env.example`), or
 set them as environment variables, which take precedence.
 
 | Variable | Default | Meaning |
@@ -231,7 +234,7 @@ set them as environment variables, which take precedence.
 Public tile servers ask for modest use, which is why bulk downloads are limited and
 paced. Point the two URL variables at your own tile source to lift that.
 
-### Where saved maps live
+### Where saved maps and airspace live
 
 Tiles are ordinary files, so they survive restarts and reboots. By default they are kept in
 the per-user application folder, outside this checkout, so deleting or re-cloning the
@@ -242,6 +245,9 @@ project does not lose them:
 | Mac | `~/Library/Application Support/MAVLink Hub/cache/` |
 | Windows | `%APPDATA%\MAVLink Hub\cache\` |
 | Linux | `~/.local/share/mavlink-hub/cache/` |
+
+Airspace data (`airspace/`), `settings.json`, `hub.log` and your `hub.env` sit in the same folder one level up. Nothing is
+ever written inside the app, and updating means replacing only the app.
 
 The Offline tab shows the exact path. Set `DATA_DIR` to put them on a bigger disk. Older
 versions kept `cache/` next to `server.js`; the hub moves that into place the first time it

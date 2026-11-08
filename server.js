@@ -23,6 +23,7 @@ function applyEnvFile(file, env = process.env) {
   return env;
 }
 applyEnvFile(path.join(__dirname, 'hub.env'));
+applyEnvFile(path.join(process.env.DATA_DIR || defaultDataDir(), 'hub.env'));   // or in the saved-data folder, which is where to put it for the Mac app (do not edit inside an app)
 
 // Where saved maps and settings live when DATA_DIR is not set: the usual per-user app folder,
 // so they outlive this checkout and survive reboots and updates.

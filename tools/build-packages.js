@@ -19,13 +19,16 @@ const TOP = 'MAVLink Hub';                                              // the f
 // What goes into a package. Tests, docs, screenshots and build tools stay out.
 const APP_FILES = ['server.js', 'airspace.js', 'launcher.js', 'launcher-api.js', 'launcher.html', 'index.html', 'package.json', 'hub.env.example'];
 const APP_DIRS = ['vendor', 'assets', 'sim'];
+// Windows: the app sits in the folder with the launcher. Mac: everything lives INSIDE MAVLink Hub.app (see MAC_APP), so
+// macOS can run it from anywhere, including the random read-only copy it makes of a freshly downloaded app.
 const PLATFORM_FILES = {
   windows: ['MAVLink Hub.bat', 'launcher.ps1', 'Create desktop shortcut.bat', 'start.bat'],
-  mac: ['MAVLink Hub.app', 'start.command'],
+  mac: ['MAVLink Hub.app'],
 };
+const MAC_APP = 'MAVLink Hub.app', MAC_RES = MAC_APP + '/Contents/Resources';
 // Where the launchers look for the bundled Node. Keep in step with launcher.ps1, start.bat, start.command and the Mac app (a test checks).
-const RUNTIME = { windows: ['runtime/node.exe'], mac: ['runtime/node-arm64', 'runtime/node-x64'] };
-const EXECUTABLE = { windows: [], mac: ['MAVLink Hub.app/Contents/MacOS/MAVLink Hub', 'start.command'] };
+const RUNTIME = { windows: ['runtime/node.exe'], mac: [MAC_RES + '/runtime/node-arm64', MAC_RES + '/runtime/node-x64'] };
+const EXECUTABLE = { windows: [], mac: [MAC_APP + '/Contents/MacOS/MAVLink Hub'] };
 
 const READ_ME = {
   windows: `MAVLink Hub for Windows
@@ -49,9 +52,10 @@ Full instructions and troubleshooting: https://github.com/douggreenak/Mavlink-Hu
 ===================
 
 Nothing else needs installing: Node.js is included (for both Apple Silicon and Intel Macs).
+Everything is inside the one app, so you can put it anywhere, for example in Applications.
 
-1. Keep this whole folder together, somewhere you will keep it.
-2. Double-click "MAVLink Hub.app".
+1. Drag "MAVLink Hub.app" wherever you like.
+2. Double-click it.
    - The first time, macOS may refuse because it was downloaded. Right-click the app, choose "Open", then "Open" again.
      If it still refuses: System Settings > Privacy & Security > "Open Anyway".
    - When macOS asks whether to let "node" accept incoming network connections, click "Allow".
@@ -70,12 +74,14 @@ const nodeFiles = (v) => ({ windows: `node-${v}-win-x64.zip`, 'mac-arm64': `node
 // Copy the app (and the right launcher files for `platform`) into outDir. Returns the relative file list.
 function assemble({ platform, outDir, root = ROOT }) {
   fs.rmSync(outDir, { recursive: true, force: true }); fs.mkdirSync(outDir, { recursive: true });
-  const copy = (rel) => {
-    const from = path.join(root, rel), to = path.join(outDir, rel);
+  const into = platform === 'mac' ? MAC_RES + '/app' : '.';              // where the app's own files go
+  const copy = (rel, dest = rel) => {
+    const from = path.join(root, rel), to = path.join(outDir, dest);
     if (!fs.existsSync(from)) throw new Error('missing from the project: ' + rel);
     fs.cpSync(from, to, { recursive: true, filter: (p) => path.basename(p) !== '.DS_Store' });
   };
-  for (const f of [...APP_FILES, ...APP_DIRS, ...PLATFORM_FILES[platform]]) copy(f);
+  for (const f of PLATFORM_FILES[platform]) copy(f);
+  for (const f of [...APP_FILES, ...APP_DIRS]) copy(f, path.posix.join(into, f));
   fs.writeFileSync(path.join(outDir, 'Read me first.txt'), platform === 'windows' ? READ_ME.windows.replace(/\n/g, '\r\n') : READ_ME.mac);
   for (const f of EXECUTABLE[platform]) fs.chmodSync(path.join(outDir, f), 0o755);
   const list = [];
@@ -107,7 +113,7 @@ const extractOne = (kind, archive, entry) => execFileSync(kind === 'zip' ? 'unzi
 
 async function addRuntime(platform, outDir, version) {
   const files = nodeFiles(version), sums = parseShasums((await get(`https://nodejs.org/dist/${version}/SHASUMS256.txt`)).toString());
-  const rt = path.join(outDir, 'runtime'); fs.mkdirSync(rt, { recursive: true });
+  const rt = path.join(outDir, platform === 'windows' ? 'runtime' : MAC_RES + '/runtime'); fs.mkdirSync(rt, { recursive: true });
   fs.writeFileSync(path.join(rt, 'node-version.txt'), version + '\n');
   if (platform === 'windows') {
     const z = await fetchNode(version, files.windows, sums), dir = files.windows.replace(/\.zip$/, '');
@@ -146,4 +152,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error('Build failed: ' + e.message); process.exit(1); });
-module.exports = { assemble, parseShasums, pickLts, sha256, nodeFiles, APP_FILES, APP_DIRS, PLATFORM_FILES, EXECUTABLE, RUNTIME, TOP };
+module.exports = { MAC_APP, MAC_RES, assemble, parseShasums, pickLts, sha256, nodeFiles, APP_FILES, APP_DIRS, PLATFORM_FILES, EXECUTABLE, RUNTIME, TOP };
