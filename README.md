@@ -186,7 +186,7 @@ bulk-download from (your own, or a paid provider) and then lift the limit.
 - **Flight**: attitude indicator, speed/altitude/battery tiles, per-cell voltages,
   flight statistics, RC channels. *Edit tiles* hides what you do not need; the choice
   is stored on the hub so every screen matches.
-- **Map**: live track with a follow mode and a street/satellite toggle.
+- **Map**: live track with a follow mode and a street/satellite toggle, a predicted path, and optional airspace layers (below).
 - **Offline**: frame an area on the map, pick Overview, Standard or Detailed (each shows its
   size before you commit), and download it. Saved areas show in green. To free space, delete
   the tiles inside the frame at the chosen detail, or everything saved for a layer.
@@ -199,6 +199,85 @@ STATUSTEXT, in MAVLink v1 or v2 (signed frames included). Anything else is count
 under *Unrecognised messages*. To add a message, append a row to the `D` table near the
 top of the script in `index.html` with its id, name, `CRC_EXTRA` and fields in wire order.
 
+## Predicted path
+
+The Map tab draws a dashed line ahead of the aircraft showing where it ends up if it holds its current turn,
+with a tick every 10 seconds. **Path** cycles it between off, 15, 30 and 60 seconds. It starts under the icon,
+follows the direction of travel (not where the nose points, so wind is allowed for), and stops after one full circle.
+
+The turn rate comes from how the direction of travel is changing and, on fixed wings, from the bank angle as well.
+INAV's own yaw-rate field is not used, because INAV fills it with gyro degrees per second although MAVLink says
+radians per second. The line is hidden when there is no GPS fix or the data is stale, so it never invents a path.
+
+Honest limits: a constant-turn prediction is good for the next few seconds and for orbits. Measured against the
+test flight, it was about 40% closer than a straight line at 3 s and 30% closer at 5 s, but no better than a
+straight line at 10 s, because pilots roll out of turns. Treat the longer lengths as "where this turn leads", not a forecast.
+
+Motion is smooth because the icon is dead-reckoned from each position report and corrections are faded in over
+a fraction of a second. INAV's default is only two reports a second over the radio, which is why other tools look jerky.
+
+## Airspace
+
+Switch **Airspace** on in the Map tab. The hub fetches public FAA data for the area in view, saves it on disk
+(so it keeps working offline once you have looked at an area) and the dashboard draws it:
+
+| Layer | What it is |
+| --- | --- |
+| Controlled | Class B, C, D and surface-area Class E |
+| Restricted & military | Prohibited, restricted, warning, alert and military operations areas, national-defense and national-security UAS restrictions |
+| Flight restrictions | Current temporary flight restrictions (TFRs), refreshed every 10 minutes |
+| RC flying sites | FAA-recognised recreational flying sites |
+| Drone ceilings | The FAA drone ceiling grid (LAANC), only when zoomed in |
+| My own files | Your own GeoJSON files (below) |
+
+Click any shape for its name, floor and ceiling. A banner on the map warns when the aircraft is **inside** an area
+that matters, or when its predicted path **will enter** one, with the time. Only airspace starting at ground level
+up to 400 ft is considered (change with `AIRSPACE_MAX_FLOOR_FT`); Class A is never shown.
+
+**This is advisory only.** The data can be out of date or incomplete, TFR altitudes and times are in the NOTAM, and
+the FAA's own tools (B4UFLY, NOTAMs) and your own checks are what count. Coverage is the United States. For other
+countries, or for places you want to avoid (a neighbour, a school), put GeoJSON files in the `airspace` folder inside
+the saved-maps folder (the Airspace panel shows the exact path). Polygons work, and a point with a `radius_m` property becomes
+a circle. Optional properties: `name`, `kind` (`restricted`, `prohibited`, `warning`, `class-d`...; anything else is
+drawn as "your own area"), `floor`, `ceiling` (feet) and `note`. `AIRSPACE=off` stops the hub fetching anything.
+
+## INAV over ELRS
+
+The dashboard is built around what INAV actually sends, taken from INAV's own MAVLink source:
+
+- **Missing sensors are shown as missing.** INAV sends no position messages without a GPS, reports 0 V, -1 A and
+  100% remaining with no battery sensing, and 0 airspeed with no pitot. The tiles show "no GPS", "no battery sensor",
+  "no airspeed sensor" and so on, those zeros never reach the statistics, and a **Sensors** card shows what is fitted
+  and healthy. Altitude falls back to the HUD message when there is no GPS.
+- **GPS without a fix** is shown as waiting, not as a track starting at 0,0. A lost fix keeps the last position and says so.
+- **Flight modes** are INAV's ArduPilot-style mode numbers, shown as names (FBW A, Cruise, RTL, Loiter...).
+- **Home** comes from INAV's `GPS_GLOBAL_ORIGIN` message when it has set one.
+- **Packet loss** is counted from message sequence numbers, because INAV's own drop-rate field is always 0.
+- **MAVLink 1 and 2**, signed frames, and frames split across radio packets are all handled.
+- INAV repeats the pack average on every cell, so per-cell bars say that rather than pretending to be measured.
+- Extra senders on the link (a ground-station heartbeat, a radio status source) do not replace the aircraft.
+
+INAV sends attitude, position and airspeed only twice a second by default (and RC and battery once a second), to
+spare the radio. The dashboard is smooth at that rate, but you can raise it in the INAV CLI, for example
+`set mavlink_extra1_rate = 5` (attitude), `set mavlink_pos_rate = 5` (position) and `save`, if your link has the room.
+If a bare-bones plane shows no position, check `mavlink_pos_rate` is not 0.
+
+## Test flights without an aircraft
+
+```bash
+npm run sim                              # a plane with every sensor, INAV's default message rates
+node sim/inav-sim.js --profile minimal   # no GPS, airspeed or battery sensing
+node sim/inav-sim.js --list              # every profile
+```
+
+On Windows, double-click **Test flight.bat**. The simulator sends INAV-style MAVLink to the hub on UDP 14550, so
+start the hub first and open the dashboard. Profiles can be combined, for example `--profile minimal,split`:
+`nogps`, `nofix` (GPS that takes 25 s to lock), `nopitot`, `novbat`, `noamp`, `nomag`, `v1` (MAVLink 1), `fast`,
+`lossy` (10% of frames lost), `corrupt`, `split` (frames cut across packets), `dropout` (link silent for 4 s every
+30 s), `radio` (an ELRS-style radio status plus a ground-station heartbeat), `copter` and `ardupilot`. The flight is a
+racetrack with wind, so the course differs from the heading and the turns are real. Use `--host` and `--port`
+to point it at another machine.
+
 ## Tests
 
 ```bash
@@ -207,6 +286,14 @@ npm test
 
 Uses Node's built-in test runner, so there is still nothing to install. The suite
 covers the tile math and request validation, the HTTP/UDP/SSE server end to end
-against a local fake tile source (no internet needed), and the browser-side MAVLink
-decoder, which is loaded from `index.html` into a stubbed DOM and fed frames built by
-an independent encoder in `test/helpers/mavlink.js`.
+against a local fake tile source (no internet needed), the browser-side MAVLink decoder
+(loaded from `index.html` into a stubbed DOM with a virtual clock), and the following,
+all offline:
+
+- every message the dashboard decodes is checked field by field against definitions
+  extracted from the official MAVLink XML, using an encoder that shares no code with the decoder;
+- the simulator is run through the dashboard for every missing-sensor and link-fault profile, and through a real
+  UDP socket, the hub and the live stream, checking the bytes arrive unchanged and are understood;
+- smoothness and prediction are measured frame by frame at 60 fps, including against a straight-line baseline;
+- the airspace service is tested against a fake FAA server using trimmed real FAA responses in `test/fixtures`
+  (caching, offline use, FAA outages, paging, your own files), plus the inside / will-enter logic.

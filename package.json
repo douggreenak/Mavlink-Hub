@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "sim": "node sim/inav-sim.js"
   },
   "engines": {
     "node": ">=18.2"

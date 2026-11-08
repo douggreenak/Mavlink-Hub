@@ -7,6 +7,8 @@
 //   DATA_DIR            - where cache/ and settings.json live (default: the per-user app folder,
 //                         %APPDATA%\MAVLink Hub on Windows, ~/Library/Application Support/MAVLink Hub on a Mac)
 //   TILE_STREET_URL / TILE_SAT_URL  - your own tile source, e.g. https://example.com/{z}/{x}/{y}.png
+//   AIRSPACE (on)       - "off" stops the hub fetching airspace data (saved data and your own files still work)
+//   AIRSPACE_MAX_FLOOR_FT (400) - hide airspace whose floor is above this height, to keep the map readable
 const dgram = require('dgram'), http = require('http'), https = require('https'), fs = require('fs');
 const os = require('os'), path = require('path');
 
@@ -55,6 +57,7 @@ const PRECACHE_MAX_ZOOM = 17;   // finest level a bulk download may ask for
 const TILE_MAX_ZOOM = 19;       // finest level the map views may request one tile at a time
 const DOWNLOAD_TIMEOUT = 15000; // ms before an unanswered tile request is abandoned
 const viewers = new Set();
+const { createAirspace, LAYER_IDS: AIRSPACE_LAYERS } = require('./airspace.js');
 
 // Settings shared by every connected laptop (units + hidden tiles), saved in DATA_DIR.
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
@@ -180,6 +183,16 @@ let job = { done: 0, total: 0, running: false, failed: 0, cancel: false };
 const json = (res, o) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const AIRSPACE_DIR = path.join(DATA_DIR, 'airspace');
+const airspace = createAirspace({
+  dir: AIRSPACE_DIR,
+  fetchJSON: (u) => download(u).then((b) => JSON.parse(b.toString('utf8'))),
+  remote: (process.env.AIRSPACE || 'on').toLowerCase() !== 'off',
+  maxFloorFt: process.env.AIRSPACE_MAX_FLOOR_FT === undefined ? 400 : Math.max(0, +process.env.AIRSPACE_MAX_FLOOR_FT || 0),
+  ...(process.env.AIRSPACE_FAA_URL ? { faaBase: process.env.AIRSPACE_FAA_URL } : {}),
+  ...(process.env.AIRSPACE_TFR_URL ? { tfrBase: process.env.AIRSPACE_TFR_URL } : {}),
+});
+
 function handle(req, res) {
   let m;
   const [url, qs = ''] = req.url.split('?');
@@ -243,8 +256,13 @@ function handle(req, res) {
     const p = parsePlan(qs);
     if (p.error) return json(res, { error: p.error });
     json(res, { ok: true, deleted: clearArea(p.l, p.rs) });
+  } else if (url === '/airspace') {
+    const q = new URLSearchParams(qs), g = (k) => { const v = q.get(k); return v == null || v.trim() === '' ? NaN : +v; };
+    const box = { w: g('w'), s: g('s'), e: g('e'), n: g('n') }, ids = (q.get('layers') || '').split(',').filter((x) => AIRSPACE_LAYERS.includes(x));
+    if (!ids.length || Object.values(box).some((v) => !isFinite(v)) || box.e < box.w || box.n < box.s || box.w < -180 || box.e > 180 || box.s < -90 || box.n > 90) return json(res, { error: 'Bad request' });
+    airspace.query(ids, box).then((r) => json(res, r)).catch((e) => { res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); });
   } else if (url === '/info') {
-    json(res, { urls: addresses(req.socket.localPort) });
+    json(res, { urls: addresses(req.socket.localPort), airspaceDir: AIRSPACE_DIR });
   } else if (url === '/settings' && req.method === 'GET') {
     json(res, settings);
   } else if (url === '/settings' && req.method === 'POST') {
@@ -321,4 +339,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { start, handle, parsePlan, ranges, countOf, listOf, fill, tileUrl, tileFile, download, addresses, applyEnvFile, defaultDataDir, migrateOldData, clearArea, TILES, MAX_TILES, DATA_DIR, CACHE, SETTINGS_FILE, PRECACHE_MAX_ZOOM, TILE_MAX_ZOOM };
+module.exports = { start, handle, parsePlan, ranges, countOf, listOf, fill, tileUrl, tileFile, download, addresses, applyEnvFile, defaultDataDir, migrateOldData, clearArea, TILES, MAX_TILES, DATA_DIR, CACHE, SETTINGS_FILE, AIRSPACE_DIR, PRECACHE_MAX_ZOOM, TILE_MAX_ZOOM };

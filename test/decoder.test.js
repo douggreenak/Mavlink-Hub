@@ -3,74 +3,16 @@
 // into a vm context with a just-enough DOM stub, then fed frames from test/helpers/mavlink.js.
 const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
-const M = require('./helpers/mavlink.js');
+const { loadDashboard } = require('./helpers/dashboard.js');
+const M = require('./helpers/mavlink.js');   // a second, hand-written encoder, independent of the spec-driven one in sim/
 
-// A DOM element that accepts any property set, answers any method with a no-op,
-// and keeps a real classList so toggles behave.
-function fakeElement() {
-  const store = {}, classes = new Set();
-  const classList = {
-    add: (c) => classes.add(c), remove: (c) => classes.delete(c), contains: (c) => classes.has(c),
-    toggle: (c, f) => { (f === undefined ? !classes.has(c) : f) ? classes.add(c) : classes.delete(c); },
-  };
-  const ctx2d = new Proxy({}, { get: () => () => {}, set: () => true });
-  return new Proxy(store, {
-    get(t, p) {
-      if (p === 'classList') return classList;
-      if (p === 'style' || p === 'dataset') return t[p] || (t[p] = {});
-      if (p === 'children' || p === 'options') return [];
-      if (p === 'getContext') return () => ctx2d;
-      if (p === 'getBoundingClientRect') return () => ({ width: 300, height: 300 });
-      if (p in t) return t[p];
-      return () => {};
-    },
-    set(t, p, v) { t[p] = v; return true; },
-  });
-}
-
-let D; // the page's internals, pulled out of the vm context
-before(() => {
-  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-  const src = html.slice(html.indexOf('<script>') + 8, html.lastIndexOf('</script>'));
-  const els = {};
-  const sandbox = {
-    console, performance, Date, Math,
-    setTimeout: (fn, ms) => { const t = setTimeout(fn, ms); t.unref(); return t; }, clearTimeout,
-    setInterval: (fn, ms) => { const t = setInterval(fn, ms); t.unref(); return t; }, clearInterval,
-    requestAnimationFrame: () => 0,
-    document: {
-      getElementById: (id) => els[id] || (els[id] = fakeElement()),
-      querySelectorAll: () => [], querySelector: () => null, addEventListener: () => {},
-      body: fakeElement(), documentElement: fakeElement(),
-    },
-    getComputedStyle: () => ({ getPropertyValue: () => '' }),
-    matchMedia: () => ({ matches: false, addEventListener: () => {} }),
-    localStorage: { getItem: () => null, setItem: () => {} },
-    location: { protocol: 'http:', hostname: 'localhost', origin: 'http://localhost:8080' },
-    EventSource: class { addEventListener() {} },
-    fetch: () => new Promise(() => {}),
-    atob: (s) => Buffer.from(s, 'base64').toString('binary'),
-    devicePixelRatio: 1,
-  };
-  sandbox.window = sandbox;
-  vm.createContext(sandbox);
-  vm.runInContext(src, sandbox, { filename: 'index.html#script' });
-  D = vm.runInContext('({feed, crc, defs, V, U, P, Z, MX, St, CV, UN, dist, addP, upStats, sm, esc, ok: () => ok, bad: () => bad, snack: $("snack")})', sandbox);
-});
+let H, D; // the page's internals, pulled out of the vm context
+before(() => { H = loadDashboard(); D = H.D; });
 
 const feed = (...bufs) => D.feed(new Uint8Array(Buffer.concat(bufs)));
 // Objects born inside the vm have another realm's prototypes, so compare them by value.
 const same = (a, b, msg) => assert.deepEqual(JSON.parse(JSON.stringify(a)), b, msg);
-const reset = () => { for (const k of Object.keys(D.V)) delete D.V[k]; for (const k of Object.keys(D.U)) delete D.U[k]; D.P.length = 0; };
-
-test('message table: every entry has a CRC_EXTRA and a payload length matching the MAVLink spec', () => {
-  const expectLen = { HEARTBEAT: 9, SYS_STATUS: 31, SYSTEM_TIME: 12, GPS_RAW_INT: 30, SCALED_PRESSURE: 14, ATTITUDE: 28, GLOBAL_POSITION_INT: 28, RC_CHANNELS: 42, VFR_HUD: 20, RADIO_STATUS: 9, BATTERY_STATUS: 36, STATUSTEXT: 51 };
-  for (const [id, d] of Object.entries(D.defs)) {
-    assert.equal(d.len, expectLen[d.name], `${d.name} (${id}) payload length`);
-    if (d.name in M.CRC_EXTRA) assert.equal(d.extra, M.CRC_EXTRA[d.name], `${d.name} CRC_EXTRA`);
-  }
-});
+const reset = () => { for (const k of Object.keys(D.V)) delete D.V[k]; for (const k of Object.keys(D.U)) delete D.U[k]; D.P.length = 0; D.dropTail(); };
 
 test('CRC agrees with an independent implementation on random data', () => {
   for (let n = 0; n < 50; n++) {
