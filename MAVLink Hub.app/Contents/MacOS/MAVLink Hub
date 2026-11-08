@@ -1,0 +1,29 @@
+#!/bin/bash
+# MAVLink Hub for macOS. Double-click to start the hub and open its control window.
+# The app must stay in the same folder as server.js. It only checks that Node.js is installed, runs launcher.js,
+# and shows a plain dialog if something is wrong.
+HERE="$(cd "$(dirname "$0")/../../.." && pwd)"
+cd "$HERE" || exit 1
+
+dialog() { # dialog "message" -> shows a message box
+  /usr/bin/osascript -e 'on run argv' -e 'display dialog (item 1 of argv) with title "MAVLink Hub" buttons {"OK"} default button 1 with icon caution' -e 'end run' "$1" >/dev/null 2>&1
+}
+
+# Finder starts apps with a bare PATH, so look where Node usually lives.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:$PATH"
+NODE="$(command -v node)"
+if [ -z "$NODE" ]; then
+  for n in "$HOME"/.nvm/versions/node/*/bin/node "$HOME/.volta/bin/node" "$HOME/.fnm/aliases/default/bin/node"; do [ -x "$n" ] && NODE="$n"; done
+fi
+if [ -z "$NODE" ]; then
+  R="$(/usr/bin/osascript -e 'on run argv' -e 'set r to display dialog (item 1 of argv) with title "MAVLink Hub" buttons {"Not now", "Open nodejs.org"} default button 2 with icon caution' -e 'return button returned of r' -e 'end run' "Node.js is not installed, and the hub needs it.
+
+Download the LTS version from nodejs.org, install it with the defaults, then open MAVLink Hub again." 2>/dev/null)"
+  [ "$R" = "Open nodejs.org" ] && open "https://nodejs.org"
+  exit 1
+fi
+if [ ! -f server.js ]; then dialog "server.js was not found.
+
+Keep MAVLink Hub.app in the same folder as server.js."; exit 1; fi
+
+OUT="$("$NODE" launcher.js 2>&1)" || { dialog "$OUT"; exit 1; }

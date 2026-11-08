@@ -14,6 +14,15 @@ phone on the same network opens a live dashboard in the browser.
 
 New here? Jump to [Setting up a hub laptop](#setting-up-a-hub-laptop-windows).
 
+<table align="center">
+<tr>
+<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/archive/refs/heads/main.zip"><img src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a><br><sub>Unzip it, then double-click <b>MAVLink Hub.bat</b></sub></td>
+<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/archive/refs/heads/main.zip"><img src="https://img.shields.io/badge/Download-Mac-1D1D1F?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Mac"></a><br><sub>Unzip it, then double-click <b>MAVLink Hub.app</b></sub></td>
+</tr>
+</table>
+
+<p align="center"><sub>Both buttons give the same ZIP, which holds the launcher for each system. You also need <a href="https://nodejs.org">Node.js</a> (the LTS version, installed with the defaults). Full steps are in <a href="#setting-up-a-hub-laptop-windows">Setting up a hub laptop</a>.</sub></p>
+
 ![The Flight tab in dark mode: attitude indicator, speed, altitude, battery and flight mode tiles. The Altitude tile is a soft red because the aircraft is above the drone ceiling for where it is.](docs/screenshots/flight-dark.jpg)
 
 *The Flight tab, fed by the built-in test flight. The red Altitude tile means the aircraft is above the FAA drone ceiling for that spot, and the tile says what the limit is.*
@@ -45,15 +54,17 @@ web page on it. Allow about fifteen minutes the first time.
 
 ### 2. Get the hub
 
-- Easiest: on the GitHub page click **Code → Download ZIP**, then unzip it somewhere you
-  will keep it, for example `C:\MAVLink Hub`. Keep all the files together.
+- Easiest: click **Download for Windows** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/archive/refs/heads/main.zip)), then
+  unzip it somewhere you will keep it, for example `C:\MAVLink Hub`. Keep all the files together.
 - Or, if you use Git: `git clone https://github.com/douggreenak/Mavlink-Hub.git`
 
 ### 3. Start it for the first time
 
 1. Double-click **MAVLink Hub.bat**. If Windows SmartScreen says it protected your PC,
    click **More info → Run anyway**; the file is a plain script you can open in Notepad.
-2. A small **MAVLink Hub** window appears and the dashboard opens in your browser.
+2. The hub starts quietly in the background (there is no black console window) and the
+   **MAVLink Hub** window opens, showing whether the aircraft is connected, the addresses
+   for phones, and the buttons you need. See [The launcher window](#the-launcher-window).
 3. The first time, Windows Defender Firewall asks whether to allow **Node.js** to
    communicate on networks. Tick **Private networks** and click **Allow access**. This is
    what lets the plane's telemetry in and lets phones reach the dashboard. If you dismissed
@@ -63,10 +74,28 @@ web page on it. Allow about fifteen minutes the first time.
    Network & internet → Wi-Fi → the network's properties → Private network*). On a
    *Public* network Windows blocks incoming connections even for allowed apps, and phones
    will not be able to open the dashboard.
+5. Optional: double-click **Create desktop shortcut.bat** to put a MAVLink Hub icon on your
+   Desktop, so you never need to open the folder again.
 
-Leave the hub window open while flying. Closing it stops the hub. The window shows the
-addresses phones can use, map-download progress, and a button that opens the saved-maps
-folder.
+<img src="docs/screenshots/launcher-waiting.jpg" alt="The MAVLink Hub window right after starting: waiting for the aircraft, with the dashboard button, a QR code and addresses for phones, tools, and a Stop button">
+
+*The launcher window just after starting, before the aircraft is on.*
+
+### On a Mac
+
+Same idea, with a Mac app instead of the batch file.
+
+1. Install Node.js from <https://nodejs.org> (the LTS version, defaults are fine), or `brew install node`.
+2. Click **Download for Mac** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/archive/refs/heads/main.zip)) and unzip it somewhere you will keep it.
+3. Double-click **MAVLink Hub.app**, which must stay in the same folder as `server.js`. The first
+   time, macOS may refuse because it was downloaded: right-click the app and choose **Open**,
+   then **Open** again. If it still refuses, open *System Settings → Privacy & Security* and
+   click **Open Anyway**, or run `xattr -dr com.apple.quarantine "MAVLink Hub.app"` in a terminal
+   in that folder.
+4. When macOS asks whether to let **node** accept incoming network connections, click **Allow**.
+   That is what lets the aircraft's telemetry and your phones reach the hub.
+
+The Mac app is the only difference; everything below applies to both.
 
 ### 4. Connect the plane's telemetry
 
@@ -132,17 +161,59 @@ kept elsewhere, so nothing is lost. If you use Git, `git pull`.
 | --- | --- | --- |
 | Dashboard says **Hub offline** | The browser cannot reach the hub | Start MAVLink Hub.bat; on a phone, check it is on the same Wi-Fi and the network is marked Private on the laptop |
 | **Hub connected, no telemetry** | The hub runs but no MAVLink arrives | Check the backpack is in MAVLink mode with Telemetry = WiFi, that the laptop is on the backpack's network, and that Node.js is allowed through the firewall |
-| Hub window says it **stopped**, log mentions a port in use | Another copy of the hub, or a ground station, already holds port 8080 or 14550 | Close the other program, or change `WEB_PORT` / `UDP_PORT` in `hub.env` |
+| The launcher says **the hub could not start**, or its window shows **Stopped** | Usually another program already holds port 8080 or 14550, or Node.js is missing | Read the message; close the other program, or change `WEB_PORT` / `UDP_PORT` in `hub.env`; **Show log** in the launcher has details |
 | Map is blank in the field | No internet and that area was not saved | Download it from the *Offline* tab next time you are online |
 | Values look wrong or jumpy | Usually a weak link | Click the signal bars at the top right for link statistics; *All data* shows every raw message |
 
 The hub's own messages are in `%APPDATA%\MAVLink Hub\hub.log`.
 
+## The launcher window
+
+Opening MAVLink Hub starts the hub in the background if it is not already running, then shows its control
+window. Open it again at any time: it finds the running hub and just shows the window, so you never start two.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/launcher-live-dark.jpg" alt="The launcher window receiving telemetry, in dark mode"><br><sub>Receiving telemetry, in dark mode.</sub></td>
+<td width="50%"><img src="docs/screenshots/launcher-live-light.jpg" alt="The launcher window receiving telemetry, in light mode"><br><sub>The same in light mode. It follows your computer's setting.</sub></td>
+</tr>
+</table>
+
+- **Aircraft link.** Whether the radio is sending: "Waiting for the aircraft", "Receiving telemetry" with packets and
+  kilobytes a second, or "Telemetry stopped" if the link drops, with a plain hint about what to check.
+- **Open the dashboard** opens it in your normal browser, and shows how many screens are watching.
+- **Phones and other laptops.** A QR code and the addresses to type, each with a Copy button. Click an address to
+  make the QR code point at it (useful when the laptop has both Wi-Fi and Ethernet).
+- **Tools.** Open the saved-maps folder or the folder for your own airspace files, show the hub's log, and start a
+  **test flight**: a simulated INAV flight (with or without GPS, airspeed or battery sensing, and so on) sent to
+  this hub, so you can try everything with no aircraft.
+- **This hub.** **Stop the hub** quits it. The switch *Stop the hub when I close this window* is off by default, so
+  closing the window never cuts a flight short; the hub keeps running and you can bring the window back. Turn it on
+  if you would rather closing the window stop everything.
+
+<img src="docs/screenshots/launcher-stopped.jpg" alt="The window after the hub has been stopped">
+
+*After pressing Stop. Open MAVLink Hub again to start it.*
+
+**How it works.** The window is a web page served by the hub itself (`launcher.html`), opened in an app-style window
+without an address bar, in Microsoft Edge, Chrome, Brave or Chromium if one is installed (it uses its own small
+profile, so your normal browser is untouched), or in your default browser otherwise. A short script, `launcher.js`,
+does the starting; `MAVLink Hub.bat` (with `launcher.ps1`) and `MAVLink Hub.app` just check that Node.js is installed,
+run it, and show a plain dialog if something is wrong. On Linux, run `node launcher.js`.
+
+**It is only for the hub computer.** The control page can stop the hub and open folders, so the hub refuses it from
+phones and other laptops, from any host name other than `localhost`, and from other web pages (every action needs a
+header a web page cannot send to another site). Other screens only ever see the dashboard.
+
+**If it will not start,** a dialog says why, most often that Node.js is not installed or that another program already
+holds port 8080 (close it, or set `WEB_PORT` in `hub.env`). The hub's own messages are in `hub.log` in the saved-maps
+folder, and the **Show log** button displays them.
+
 ## Running it elsewhere
 
 - **Windows without the window**: `start.bat` runs the hub in a plain console.
-- **Mac or Linux**: `node server.js` in a terminal (on a Mac, double-clicking
-  `start.command` does that for you).
+- **Mac**: `start.command` does the same in a Terminal window.
+- **Linux, or any computer**: `node launcher.js` for the window, or `node server.js` for just the hub.
 
 Then open <http://localhost:8080>.
 
@@ -364,5 +435,8 @@ all offline:
 - the simulator is run through the dashboard for every missing-sensor and link-fault profile, and through a real
   UDP socket, the hub and the live stream, checking the bytes arrive unchanged and are understood;
 - smoothness and prediction are measured frame by frame at 60 fps, including against a straight-line baseline;
+- the launcher's control API is tested for who may use it (only this computer, only the hub's own host name, only with
+  the right header, so another web page cannot press Stop), for every button's action, and for the stop-when-closed
+  switch; `launcher.js` is run for real to check it starts a hidden hub, reuses a running one, and explains a busy port;
 - the airspace service is tested against a fake FAA server using trimmed real FAA responses in `test/fixtures`
   (caching, offline use, FAA outages, paging, your own files), plus the inside / will-enter logic.

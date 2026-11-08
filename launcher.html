@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MAVLink Hub</title>
+<link rel="icon" href="/assets/icon.png">
+<style>
+:root{--s:#F2F4F7;--sl:#FFFFFF;--sh:#E9EDF2;--ink:#161C25;--mute:#5F6B7A;--out:#D8DEE6;--p:#1C6FD1;--op:#FFFFFF;--pc:#DCEBFB;--ok:#1E9A5C;--okbg:#D7F2E3;--okink:#0E5A36;--warn:#FCEFC4;--owarn:#6A4A00;--bad:#D93025;--badbg:#FBE4E2;--shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08)}
+@media(prefers-color-scheme:dark){:root{--s:#0E131B;--sl:#171E29;--sh:#232C39;--ink:#E7ECF3;--mute:#95A1B3;--out:#2C3644;--p:#5AA7F5;--op:#0B1220;--pc:#1B3454;--ok:#3FC484;--okbg:#15382A;--okink:#8EE0B7;--warn:#4A3708;--owarn:#F5D47C;--bad:#F0545A;--badbg:#472629;--shadow:none}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--s);color:var(--ink);font:400 15px/1.45 "Segoe UI","Roboto Flex",system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;user-select:none}
+main{max-width:520px;margin:0 auto;padding:14px 14px 18px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:11px}
+header img{width:40px;height:40px;border-radius:11px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+h1{font-size:20px;margin:0;font-weight:700;letter-spacing:-.2px}
+.sub{color:var(--mute);font-size:12.5px}
+.pill{margin-left:auto;display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;font-weight:600;font-size:13px;background:var(--okbg);color:var(--okink)}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.pill.off{background:var(--badbg);color:var(--bad)}.pill.off i{background:var(--bad)}
+.card{background:var(--sl);border:1px solid var(--out);border-radius:14px;padding:12px 16px;margin-bottom:9px;box-shadow:var(--shadow)}
+h2{margin:0 0 7px;font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mute)}
+.big{font-size:20px;font-weight:700;letter-spacing:-.3px;display:flex;align-items:center;gap:10px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--out);flex:none}
+.dot.live{background:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 25%,transparent)}.dot.wait{background:#E0A526}
+.meta{color:var(--mute);font-size:13.5px;margin-top:4px}
+.hint{margin-top:8px;padding:8px 11px;border-radius:10px;background:var(--sh);color:var(--mute);font-size:13px}
+button{font:inherit;font-size:14px;font-weight:600;border:1px solid transparent;border-radius:11px;padding:9px 15px;cursor:pointer;background:var(--sh);color:var(--ink);transition:background .15s,border-color .15s}
+button:hover{border-color:var(--out)}button:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--p);color:var(--op);padding:10px 18px;font-size:15px}
+button.primary:hover{filter:brightness(1.07)}
+button.danger{background:transparent;color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+button.danger:hover{background:var(--badbg)}
+button:focus-visible,select:focus-visible{outline:2px solid var(--p);outline-offset:2px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.grow{flex:1}
+.share{display:flex;gap:14px;align-items:flex-start}
+#qr{width:112px;height:112px;flex:none;background:#fff;border-radius:10px;padding:6px;border:1px solid var(--out)}
+#qr svg{width:100%;height:100%;display:block}
+.addrs{flex:1;min-width:0;display:grid;gap:6px}
+.addr{display:flex;gap:6px;align-items:center;background:var(--sh);border:1.5px solid transparent;border-radius:10px;padding:5px 6px 5px 11px;cursor:pointer}
+.addr.sel{border-color:var(--p)}
+.addr span{flex:1;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text}
+.addr button{padding:4px 10px;font-size:12.5px;background:var(--sl)}
+select{font:inherit;font-size:14px;padding:8px 10px;border-radius:10px;border:1px solid var(--out);background:var(--sl);color:var(--ink);min-width:0;max-width:100%}
+pre{margin:10px 0 0;max-height:190px;overflow:auto;background:var(--sh);border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;user-select:text}
+.switch{display:flex;gap:10px;align-items:center;cursor:pointer;font-size:14px}
+.switch input{width:18px;height:18px;accent-color:var(--p);cursor:pointer}
+.foot{color:var(--mute);font-size:12px;margin-top:6px;word-break:break-all}
+#gone{position:fixed;inset:0;background:var(--s);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;z-index:10}
+#gone.show{display:flex}#gone img{width:72px;height:72px;border-radius:18px;opacity:.55;margin-bottom:14px}
+#gone h3{margin:0 0 6px;font-size:20px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body>
+<main>
+ <header><img src="/assets/icon.png" alt=""><div><h1>MAVLink Hub</h1><div class="sub" id="ver">&nbsp;</div></div><span class="pill" id="pill"><i></i><b id="pilltxt">Running</b></span></header>
+
+ <section class="card">
+  <h2>Aircraft link and dashboard</h2>
+  <div class="big"><span class="dot" id="ldot"></span><span id="lstate">Starting…</span></div>
+  <div class="meta" id="lmeta"></div>
+  <div class="hint" id="lhint" style="display:none"></div>
+  <div class="row" style="margin-top:12px"><button class="primary" id="opendash">Open the dashboard</button><span class="meta" id="viewers" style="margin:0"></span></div>
+ </section>
+
+ <section class="card">
+  <h2>Phones and other laptops</h2>
+  <div class="share">
+   <div id="qr" aria-label="QR code for the dashboard address"></div>
+   <div>
+    <div class="meta" style="margin:0 0 8px">Scan with a phone on the same Wi-Fi as this computer, or type an address.</div>
+    <div class="addrs" id="addrs"></div>
+   </div>
+  </div>
+ </section>
+
+ <section class="card">
+  <h2>Tools</h2>
+  <div class="row" style="margin-bottom:10px">
+   <button id="openmaps">Saved maps folder</button>
+   <button id="openair">Airspace files folder</button>
+   <button id="showlog">Show log</button>
+  </div>
+  <pre id="log" style="display:none"></pre>
+  <div class="row" style="margin-top:6px">
+   <select id="profile" class="grow" aria-label="Test flight"></select>
+   <button id="flight">Start test flight</button>
+  </div>
+  <div class="meta" id="flightnote" style="margin-top:6px">A test flight sends a simulated INAV flight to this hub.</div>
+ </section>
+
+ <section class="card">
+  <h2>This hub</h2>
+  <div class="row"><label class="switch grow"><input type="checkbox" id="stoponclose"><span>Stop the hub when I close this window</span></label><button class="danger" id="stop">Stop the hub</button></div>
+  <div class="meta" style="margin-top:6px" id="closenote">Off: the hub keeps running if you close this window, so a flight is never cut short by accident. Open MAVLink Hub again to bring the window back.</div>
+  <div class="foot" id="dir"></div>
+ </section>
+</main>
+
+<div id="gone"><img src="/assets/icon.png" alt=""><h3 id="gonehead">The hub has stopped</h3><div class="meta" id="gonetxt">You can close this window. To start it again, open MAVLink Hub.</div></div>
+
+<script src="/vendor/qrcode.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const api=(path,body)=>fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Launcher':'1'},body:JSON.stringify(body||{})}).then(r=>r.json());
+let cur=null,sel=null,qrFor=null,stopping=false,profilesFilled=false;
+const fmtUp=s=>s<90?s+' s':s<5400?Math.round(s/60)+' min':Math.floor(s/3600)+' h '+Math.round((s%3600)/60)+' min';
+function drawQR(url){
+ if(qrFor===url)return;qrFor=url;
+ if(typeof qrcode!=='function'||!url){$('qr').innerHTML='';return}
+ const q=qrcode(0,'M');q.addData(url);q.make();const n=q.getModuleCount(),m=2;let d='';
+ for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(q.isDark(r,c))d+=`M${c+m} ${r+m}h1v1h-1z`;
+ $('qr').innerHTML=`<svg viewBox="0 0 ${n+2*m} ${n+2*m}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+async function copy(text,btn){
+ try{await navigator.clipboard.writeText(text)}catch(e){const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();try{document.execCommand('copy')}catch(x){}t.remove()}
+ const o=btn.textContent;btn.textContent='Copied';setTimeout(()=>btn.textContent=o,1200);
+}
+function render(s){
+ cur=s;$('gone').classList.remove('show');
+ $('ver').textContent='Version '+s.version+' · running for '+fmtUp(s.uptimeS);
+ $('pill').className='pill';$('pilltxt').textContent='Running';
+ const t=s.telemetry,live=t.lastAgoMs!=null&&t.lastAgoMs<2500;
+ $('ldot').className='dot '+(live?'live':'wait');
+ $('lstate').textContent=live?'Receiving telemetry':t.packets?'Telemetry stopped':'Waiting for the aircraft';
+ $('lmeta').textContent=live?`${t.pps.toFixed(1)} packets a second · ${(t.bps/1024).toFixed(1)} kB/s · listening on UDP port ${s.udpPort}`
+  :t.packets?`Last packet ${Math.round(t.lastAgoMs/1000)} s ago. Listening on UDP port ${s.udpPort}.`:`Listening on UDP port ${s.udpPort}.`;
+ const h=$('lhint');
+ if(live)h.style.display='none';
+ else{h.style.display='block';h.textContent=t.packets?'The link dropped. Check the aircraft and radio are on, and this computer is still on the same Wi-Fi.':'Power up the aircraft and radio, with this computer on the same Wi-Fi as the ELRS backpack. Or start a test flight below.'}
+ $('viewers').textContent=s.viewers?`${s.viewers} screen${s.viewers>1?'s':''} watching`:'No screens watching yet';
+ // addresses
+ const urls=s.urls.length?s.urls:[];
+ if(!sel||!urls.includes(sel))sel=urls[0]||null;
+ $('addrs').innerHTML=urls.length?'':'<div class="meta" style="margin:0">No network address found. Is Wi-Fi on?</div>';
+ for(const u of urls){
+  const d=document.createElement('div');d.className='addr'+(u===sel?' sel':'');d.innerHTML='<span></span><button>Copy</button>';
+  d.firstChild.textContent=u.replace('http://','');
+  d.onclick=()=>{sel=u;render(cur)};d.lastChild.onclick=e=>{e.stopPropagation();copy(u,e.target)};$('addrs').appendChild(d);
+ }
+ drawQR(sel);
+ // tools
+ if(!profilesFilled){profilesFilled=true;$('profile').innerHTML=s.profiles.map(p=>`<option value="${p.name}">${p.name==='full'?'Plane with every sensor':p.description?p.name+' · '+p.description:p.name}</option>`).join('')}
+ const f=s.testFlight.running;$('flight').textContent=f?'Stop test flight':'Start test flight';$('profile').disabled=f;
+ $('flightnote').textContent=f?`Test flight running (${s.testFlight.profile}). Open the dashboard to watch it.`:'A test flight sends a simulated INAV flight to this hub.';
+ $('showlog').style.display=s.hasLog?'':'none';
+ $('stoponclose').checked=s.prefs.stopOnClose;
+ $('closenote').textContent=s.prefs.stopOnClose?'On: closing this window stops the hub.':'Off: the hub keeps running if you close this window, so a flight is never cut short by accident. Open MAVLink Hub again to bring the window back.';
+ $('dir').textContent='Saved maps and settings: '+s.dataDir;
+}
+const es=new EventSource('/launcher/stream');
+es.onmessage=e=>render(JSON.parse(e.data));
+es.onerror=()=>{$('pill').className='pill off';$('pilltxt').textContent='Stopped';$('gone').classList.add('show');$('gonehead').textContent=stopping?'The hub has been stopped':'The hub has stopped';$('lstate').textContent='Stopped'};
+$('opendash').onclick=()=>api('/launcher/open',{target:'dashboard'});
+$('openmaps').onclick=()=>api('/launcher/open',{target:'maps'});
+$('openair').onclick=()=>api('/launcher/open',{target:'airspace'});
+$('showlog').onclick=async()=>{const p=$('log');if(p.style.display==='block'){p.style.display='none';$('showlog').textContent='Show log';return}
+ p.textContent=await fetch('/launcher/log').then(r=>r.text());p.style.display='block';p.scrollTop=p.scrollHeight;$('showlog').textContent='Hide log'};
+$('flight').onclick=()=>api('/launcher/testflight',cur&&cur.testFlight.running?{action:'stop'}:{action:'start',profile:$('profile').value});
+$('stoponclose').onchange=e=>api('/launcher/prefs',{stopOnClose:e.target.checked});
+$('stop').onclick=()=>{if(!confirm('Stop the hub? Anyone watching the dashboard will lose the live data.'))return;stopping=true;api('/launcher/stop')};
+</script>
+</body></html>

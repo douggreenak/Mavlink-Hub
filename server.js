@@ -58,6 +58,11 @@ const TILE_MAX_ZOOM = 19;       // finest level the map views may request one ti
 const DOWNLOAD_TIMEOUT = 15000; // ms before an unanswered tile request is abandoned
 const viewers = new Set();
 const { createAirspace, LAYER_IDS: AIRSPACE_LAYERS } = require('./airspace.js');
+const { createLauncherApi } = require('./launcher-api.js');
+const VERSION = require('./package.json').version;
+const stats = { packets: 0, bytes: 0, last: 0 };   // what the radio side has sent us, for the launcher window
+let launcher = null, startedAt = Date.now();
+process.on('exit', () => { if (launcher) launcher.shutdown(); });   // never leave a test flight running behind a stopped hub
 
 // Settings shared by every connected laptop (units + hidden tiles), saved in DATA_DIR.
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
@@ -196,6 +201,13 @@ const airspace = createAirspace({
 function handle(req, res) {
   let m;
   const [url, qs = ''] = req.url.split('?');
+  if (url.startsWith('/launcher') && launcher && launcher.handle(req, res, url, qs)) return;
+  if ((m = url.match(/^\/(?:assets\/)?(icon\.png|hub\.ico)$/)) || url === '/favicon.ico') {
+    const name = m ? m[1] : 'icon.png', f = path.join(__dirname, 'assets', name);
+    if (!fs.existsSync(f)) { res.writeHead(404).end(); return; }
+    res.writeHead(200, { 'Content-Type': name.endsWith('.ico') ? 'image/x-icon' : 'image/png', 'Cache-Control': 'public, max-age=86400' });
+    fs.createReadStream(f).pipe(res); return;
+  }
   if (url === '/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     res.write(': connected\n\n');
@@ -302,21 +314,33 @@ function addresses(port) {
 // Bind the UDP listener and the web server. Resolves with both plus a close() for tests.
 // migrate: move cache/ and settings.json from beside server.js into DATA_DIR. Only when DATA_DIR is
 // the default, i.e. the upgrade case; a DATA_DIR someone set on purpose is left exactly as it is.
-function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migrate = !process.env.DATA_DIR } = {}) {
+function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migrate = !process.env.DATA_DIR, launcherDeps = {} } = {}) {
   if (migrate) { try { if (migrateOldData()) loadSettings(); } catch (e) { console.error('Could not move old saved maps:', e.message); } }
   fs.mkdirSync(DATA_DIR, { recursive: true });
   return new Promise((resolve, reject) => {
     const udp = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     const web = http.createServer(handle);
-    udp.on('message', (msg) => broadcast(`data: ${msg.toString('base64')}\n\n`));
+    udp.on('message', (msg) => { stats.packets++; stats.bytes += msg.length; stats.last = Date.now(); broadcast(`data: ${msg.toString('base64')}\n\n`); });
     udp.once('error', reject);
     web.once('error', reject);
     udp.bind(udpPort, () => web.listen(webPort, host, () => {
       udp.on('error', (e) => console.error('UDP error:', e.message));
       web.on('error', (e) => console.error('Web error:', e.message));
+      startedAt = Date.now(); stats.packets = 0; stats.bytes = 0; stats.last = 0;
+      const { PROFILES, DESCRIBE } = require('./sim/inav-sim.js');
+      launcher = createLauncherApi({
+        dir: DATA_DIR, page: path.join(__dirname, 'launcher.html'),
+        profiles: Object.keys(PROFILES).map((name) => ({ name, description: DESCRIBE[name] || '' })),
+        info: (port) => ({ version: VERSION, startedAt, webPort: port, udpPort: udp.address().port, urls: addresses(port), viewers: viewers.size, stats,
+          dataDir: DATA_DIR, airspaceDir: AIRSPACE_DIR, logFile: process.env.HUB_LOG || null }),
+        quit: () => { if (launcherDeps.onQuit) launcherDeps.onQuit(); else { launcher.shutdown(); process.exit(0); } },
+        ...(launcherDeps.open ? { open: launcherDeps.open } : {}), ...(launcherDeps.spawnSim ? { spawnSim: launcherDeps.spawnSim } : {}),
+        ...(launcherDeps.graceMs != null ? { graceMs: launcherDeps.graceMs } : {}),
+      });
       resolve({
-        udp, web,
+        udp, web, launcher,
         close: () => new Promise((done) => {
+          if (launcher) launcher.shutdown();
           for (const v of viewers) v.destroy();
           viewers.clear();
           udp.close(() => { web.closeAllConnections(); web.close(() => done()); });
@@ -327,6 +351,7 @@ function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migra
 }
 
 if (require.main === module) {
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(0));   // lets the exit hook above stop any test flight
   start().then(({ udp, web }) => {
     console.log(`Node ${process.version} - listening for MAVLink on UDP ${udp.address().port}`);
     console.log(`Saved maps and settings: ${DATA_DIR}`);
