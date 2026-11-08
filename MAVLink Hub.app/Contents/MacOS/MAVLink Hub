@@ -50,6 +50,15 @@ If you are using a Git checkout, keep MAVLink Hub.app in the same folder as serv
   exit 1
 fi
 
+# The window: the app's own native window (hubwindow, in the packaged app) when present; otherwise launcher.js opens a
+# browser app window. LAUNCHER_NO_WINDOW=1 (tests, headless) skips every window.
+HELPER="$APP/Contents/MacOS/hubwindow"
+if [ -x "$HELPER" ] && [ -z "$LAUNCHER_NO_WINDOW" ]; then
+  OUT="$(LAUNCHER_NO_WINDOW=1 "$NODE" launcher.js 2>&1)" || { show "$OUT"; exit 1; }
+  PORT="$(printf '%s\n' "$OUT" | sed -n 's/^HUB_PORT=//p' | tail -1)"
+  [ -n "$PORT" ] && exec "$HELPER" "$PORT"
+  exit 0
+fi
 OUT="$("$NODE" launcher.js 2>&1)" || { show "$OUT"; exit 1; }
 
 # Stay running while the hub does. macOS cleans up everything an app started once the app's own process ends, which would

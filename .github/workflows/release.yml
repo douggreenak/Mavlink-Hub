@@ -9,7 +9,7 @@ permissions:
   contents: write
 jobs:
   package:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     env:
       GH_TOKEN: ${{ github.token }}
     steps:

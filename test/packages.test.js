@@ -200,3 +200,23 @@ test('the Mac app stays running while the hub runs (macOS removes what an app st
     assert.equal(ended, true, 'and it ends when the hub is stopped');
   } finally { app.kill(); try { const pid = fs.readFileSync(path.join(data, 'hub.pid'), 'utf8'); process.kill(+pid); } catch (e) { /* none */ } }
 });
+
+test('the Mac app gets its own native window: compiled for both Mac types, and the app script hands over to it', { skip: spawnSync('which', ['swiftc']).status !== 0 }, () => {
+  const root = tmp(); B.assemble({ platform: 'mac', outDir: root });
+  const exe = B.buildNative(root), info = spawnSync('lipo', ['-info', exe], { encoding: 'utf8' }).stdout;
+  assert.match(info, /arm64/); assert.match(info, /x86_64/);
+  assert.ok(fs.statSync(exe).mode & 0o100, 'executable');
+  const script = fs.readFileSync(path.join(root, MAC_APP, 'Contents', 'MacOS', 'MAVLink Hub'), 'utf8');
+  assert.match(script, /exec "\$HELPER" "\$PORT"/); assert.match(script, /hubwindow/);
+  assert.match(fs.readFileSync(path.join(root, MAC_APP, 'Contents', 'Info.plist'), 'utf8'), /NSAllowsLocalNetworking/);
+});
+
+test('the Windows launcher uses the app window (WebView2) from runtime\\webview2, with the files the build puts there, and still falls back to a browser window', () => {
+  const ps = fs.readFileSync(path.join(ROOT, 'launcher.ps1'), 'utf8');
+  assert.match(ps, /runtime\\webview2/);
+  for (const name of Object.values(B.WEBVIEW2.files)) if (name.endsWith('.dll') && !name.startsWith('WebView2Loader')) assert.ok(ps.includes(name), name + ' is loaded by launcher.ps1');
+  assert.match(ps, /Start-Hub \$false/, 'falls back to the browser app window');
+  assert.match(ps, /HUB_PORT=/);
+  assert.match(B.WEBVIEW2.sha256, /^[0-9a-f]{64}$/);
+  const l = fs.readFileSync(path.join(ROOT, 'launcher.js'), 'utf8'); assert.match(l, /HUB_PORT=/);
+});

@@ -193,11 +193,13 @@ window. Open it again at any time: it finds the running hub and just shows the w
 
 *After pressing Stop. Open MAVLink Hub again to start it.*
 
-**How it works.** The window is a web page served by the hub itself (`launcher.html`), opened in an app-style window
-without an address bar, in Microsoft Edge, Chrome, Brave or Chromium if one is installed (it uses its own small
-profile, so your normal browser is untouched), or in your default browser otherwise. A short script, `launcher.js`,
-does the starting; `MAVLink Hub.bat` (with `launcher.ps1`) and `MAVLink Hub.app` just check that Node.js is installed,
-run it, and show a plain dialog if something is wrong. On Linux, run `node launcher.js`.
+**How it works.** The window is a web page served by the hub itself (`launcher.html`). In the downloads it is shown in the
+app's own window: a native window on the Mac (its own Dock icon, name and menu; closing it or quitting the app stops the hub),
+and a WebView2 window on Windows (the Edge engine that comes with Windows 10 and 11; closing it leaves the hub running).
+If that is not possible it falls back to an app-style Edge, Chrome, Brave or Chromium window (with its own small profile, so
+your normal browser is untouched), or your default browser. A short script, `launcher.js`, does the starting;
+`MAVLink Hub.bat` (with `launcher.ps1`) and `MAVLink Hub.app` just check that Node.js is available, run it, show the window,
+and show a plain dialog if something is wrong. On Linux, run `node launcher.js`.
 
 **It is only for the hub computer.** The control page can stop the hub and open folders, so the hub refuses it from
 phones and other laptops, from any host name other than `localhost`, and from other web pages (every action needs a

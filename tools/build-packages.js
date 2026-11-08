@@ -30,6 +30,12 @@ const MAC_APP = 'MAVLink Hub.app', MAC_RES = MAC_APP + '/Contents/Resources';
 const RUNTIME = { windows: ['runtime/node.exe'], mac: [MAC_RES + '/runtime/node-arm64', MAC_RES + '/runtime/node-x64'] };
 const EXECUTABLE = { windows: [], mac: [MAC_APP + '/Contents/MacOS/MAVLink Hub'] };
 
+// Windows: the hub's own window is a WebView2 control (the Edge engine already on Windows 10/11). Its small managed wrapper
+// comes from Microsoft's NuGet package, checked against this pinned SHA-256, and goes in runtime/webview2 (launcher.ps1).
+const WEBVIEW2 = { version: '1.0.2849.39', sha256: '099ec21f62e0e29ef9d9a991d096421efb256bdfdb64984216395736043560fd',
+  files: { 'lib/net462/Microsoft.Web.WebView2.Core.dll': 'Microsoft.Web.WebView2.Core.dll', 'lib/net462/Microsoft.Web.WebView2.WinForms.dll': 'Microsoft.Web.WebView2.WinForms.dll',
+           'runtimes/win-x64/native/WebView2Loader.dll': 'WebView2Loader.dll', 'LICENSE.txt': 'LICENSE-webview2.txt' } };
+
 const READ_ME = {
   windows: `MAVLink Hub for Windows
 =======================
@@ -89,6 +95,17 @@ function assemble({ platform, outDir, root = ROOT }) {
   return list.sort();
 }
 
+// The Mac app's own window (mac/HubWindow.swift), compiled for Apple Silicon and Intel into one binary. Needs swiftc (Xcode
+// command line tools), so it can only be built on a Mac; without it the app falls back to a browser app window.
+function buildNative(outDir) {
+  const exe = path.join(outDir, MAC_APP, 'Contents', 'MacOS', 'hubwindow'), tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'hubwin-'));
+  try {
+    const parts = ['arm64', 'x86_64'].map((arch) => { const o = path.join(tmp, arch); execFileSync('swiftc', ['-O', '-swift-version', '5', '-target', `${arch}-apple-macos11.0`, '-o', o, path.join(ROOT, 'mac', 'HubWindow.swift')], { stdio: 'inherit' }); return o; });
+    execFileSync('lipo', ['-create', ...parts, '-output', exe]);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  fs.chmodSync(exe, 0o755); return exe;
+}
+
 // ---------- downloading Node ----------
 function get(url, hops = 0) {
   return new Promise((resolve, reject) => {
@@ -111,6 +128,19 @@ async function fetchNode(version, file, sums) {
 }
 const extractOne = (kind, archive, entry) => execFileSync(kind === 'zip' ? 'unzip' : 'tar', kind === 'zip' ? ['-p', archive, entry] : ['-xzOf', archive, entry], { maxBuffer: 400 * 1024 * 1024 });
 
+async function addWebView2(rt) {
+  fs.mkdirSync(CACHE, { recursive: true });
+  const cached = path.join(CACHE, `webview2-${WEBVIEW2.version}.nupkg`);
+  if (!(fs.existsSync(cached) && sha256(fs.readFileSync(cached)) === WEBVIEW2.sha256)) {
+    console.log('  downloading WebView2', WEBVIEW2.version);
+    const buf = await get(`https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/${WEBVIEW2.version}/microsoft.web.webview2.${WEBVIEW2.version}.nupkg`);
+    if (sha256(buf) !== WEBVIEW2.sha256) throw new Error('Checksum mismatch for the WebView2 package: refusing to use it');
+    fs.writeFileSync(cached, buf);
+  }
+  const dir = path.join(rt, 'webview2'); fs.mkdirSync(dir, { recursive: true });
+  for (const [entry, name] of Object.entries(WEBVIEW2.files)) fs.writeFileSync(path.join(dir, name), extractOne('zip', cached, entry));
+}
+
 async function addRuntime(platform, outDir, version) {
   const files = nodeFiles(version), sums = parseShasums((await get(`https://nodejs.org/dist/${version}/SHASUMS256.txt`)).toString());
   const rt = path.join(outDir, platform === 'windows' ? 'runtime' : MAC_RES + '/runtime'); fs.mkdirSync(rt, { recursive: true });
@@ -119,6 +149,7 @@ async function addRuntime(platform, outDir, version) {
     const z = await fetchNode(version, files.windows, sums), dir = files.windows.replace(/\.zip$/, '');
     fs.writeFileSync(path.join(rt, 'node.exe'), extractOne('zip', z, `${dir}/node.exe`));
     fs.writeFileSync(path.join(rt, 'LICENSE-node.txt'), extractOne('zip', z, `${dir}/LICENSE`));
+    await addWebView2(rt);
   } else {
     for (const arch of ['arm64', 'x64']) {
       const t = await fetchNode(version, files['mac-' + arch], sums), dir = files['mac-' + arch].replace(/\.tar\.gz$/, '');
@@ -142,6 +173,7 @@ async function main() {
     console.log(`${name}${runtime ? ' with Node ' + version : ' (no Node)'}`);
     const list = assemble({ platform: t, outDir: folder });
     if (runtime) await addRuntime(t, folder, version);
+    if (t === 'mac' && !a.includes('--no-native')) { console.log('  compiling the native window'); buildNative(folder); }
     fs.rmSync(zip, { force: true });
     execFileSync('zip', ['-r', '-X', '-q', zip, TOP], { cwd: stage });
     fs.rmSync(stage, { recursive: true, force: true });
@@ -152,4 +184,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error('Build failed: ' + e.message); process.exit(1); });
-module.exports = { MAC_APP, MAC_RES, assemble, parseShasums, pickLts, sha256, nodeFiles, APP_FILES, APP_DIRS, PLATFORM_FILES, EXECUTABLE, RUNTIME, TOP };
+module.exports = { WEBVIEW2, buildNative, MAC_APP, MAC_RES, assemble, parseShasums, pickLts, sha256, nodeFiles, APP_FILES, APP_DIRS, PLATFORM_FILES, EXECUTABLE, RUNTIME, TOP };

@@ -1,6 +1,7 @@
 # MAVLink Hub launcher for Windows. Started (hidden) by "MAVLink Hub.bat".
 # It only checks that Node.js is there, runs launcher.js, and shows a plain message box if something is wrong.
-# The control window itself is a web page served by the hub (launcher.html), opened in an app-style window.
+# The control window is a web page served by the hub (launcher.html). It is shown in this app's own window (WebView2, from
+# runtime\webview2, included in the download); if that is not possible it falls back to an Edge/Chrome app-style window.
 Add-Type -AssemblyName System.Windows.Forms
 $repo = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repo
@@ -31,13 +32,74 @@ if (-not $node) {
   exit 1
 }
 
-$out = Join-Path $env:TEMP 'mavlink-hub-launcher.out'
-$err = Join-Path $env:TEMP 'mavlink-hub-launcher.err'
-$p = Start-Process -FilePath $node -ArgumentList ('"' + (Join-Path $repo 'launcher.js') + '"') -WorkingDirectory $repo -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
-if (-not $p.WaitForExit(60000)) { Say 'The hub is taking too long to start. Check the log in the saved-maps folder (hub.log).'; exit 1 }
-if ($p.ExitCode -ne 0) {
+# Starts the hub (or finds it running). With $noWindow the launcher opens no window of its own; the port is in the output.
+function Start-Hub([bool]$noWindow) {
+  $out = Join-Path $env:TEMP 'mavlink-hub-launcher.out'
+  $err = Join-Path $env:TEMP 'mavlink-hub-launcher.err'
+  if ($noWindow) { $env:LAUNCHER_NO_WINDOW = '1' }
+  try {
+    $p = Start-Process -FilePath $node -ArgumentList ('"' + (Join-Path $repo 'launcher.js') + '"') -WorkingDirectory $repo -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+    if (-not $p.WaitForExit(60000)) { return @{ code = -1; text = 'The hub is taking too long to start. Check the log in the saved-maps folder (hub.log).'; port = $null } }
+  } finally { Remove-Item Env:\LAUNCHER_NO_WINDOW -ErrorAction SilentlyContinue }
+  $port = $null; $o = Get-Content $out -Raw -ErrorAction SilentlyContinue
+  if ($o -match 'HUB_PORT=(\d+)') { $port = [int]$Matches[1] }
   $msg = (Get-Content $err -Raw -ErrorAction SilentlyContinue)
   if (-not $msg) { $msg = 'The hub could not start.' }
-  Say $msg.Trim()
-  exit 1
+  return @{ code = $p.ExitCode; text = $msg.Trim(); port = $port }
 }
+
+# The app's own window: the control page inside a WebView2 control. Returns $true when it opened and was then closed
+# normally, $false when it could not be shown (the caller then falls back to a browser app window).
+$webview = Join-Path $repo 'runtime\webview2'
+function Show-Window([int]$port) {
+  try {
+    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+    Add-Type -Path (Join-Path $webview 'Microsoft.Web.WebView2.Core.dll')
+    Add-Type -Path (Join-Path $webview 'Microsoft.Web.WebView2.WinForms.dll')
+    $script:hubPort = $port; $script:ready = $false; $script:failed = $false
+    $dataDir = if ($env:DATA_DIR) { $env:DATA_DIR } else { Join-Path $env:APPDATA 'MAVLink Hub' }
+    $script:form = New-Object System.Windows.Forms.Form
+    $script:form.Text = 'MAVLink Hub'
+    $script:form.ClientSize = New-Object System.Drawing.Size(520, 840)
+    $script:form.MinimumSize = New-Object System.Drawing.Size(440, 600)
+    $script:form.StartPosition = 'CenterScreen'
+    $ico = Join-Path $repo 'assets\hub.ico'
+    if (Test-Path $ico) { $script:form.Icon = New-Object System.Drawing.Icon($ico) }
+    $wv = New-Object Microsoft.Web.WebView2.WinForms.WebView2
+    $wv.Dock = 'Fill'
+    $props = New-Object Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties
+    $props.UserDataFolder = Join-Path $dataDir 'webview2-profile'
+    $wv.CreationProperties = $props
+    $wv.add_CoreWebView2InitializationCompleted({
+      param($s, $e)
+      if (-not $e.IsSuccess) { $script:failed = $true; $script:form.Close(); return }
+      $script:ready = $true
+      $core = $s.CoreWebView2
+      $core.Settings.AreDevToolsEnabled = $false
+      $core.add_NewWindowRequested({ param($a, $b) $b.Handled = $true; if ($b.Uri -match '^https?://') { Start-Process $b.Uri } })
+      $core.add_NavigationStarting({
+        param($a, $b)
+        $u = [uri]$b.Uri
+        $mine = ($u.Host -eq 'localhost' -or $u.Host -eq '127.0.0.1') -and $u.Port -eq $script:hubPort -and ($u.AbsolutePath.StartsWith('/launcher') -or $u.AbsolutePath.StartsWith('/assets'))
+        if (-not $mine) { $b.Cancel = $true; if ($b.Uri -match '^https?://') { Start-Process $b.Uri } }
+      })
+    })
+    $script:form.Controls.Add($wv)
+    $wv.Source = [uri]"http://localhost:$port/launcher"
+    # If the web view has not come up in 25 seconds, give up on it (missing WebView2 runtime, blocked profile folder...).
+    $script:timer = New-Object System.Windows.Forms.Timer
+    $script:timer.Interval = 25000
+    $script:timer.add_Tick({ $script:timer.Stop(); if (-not $script:ready) { $script:failed = $true; $script:form.Close() } })
+    $script:timer.Start()
+    [void]$script:form.ShowDialog()
+    $script:timer.Dispose()
+    return ($script:ready -and -not $script:failed)
+  } catch { return $false }
+}
+
+$native = Test-Path (Join-Path $webview 'Microsoft.Web.WebView2.WinForms.dll')
+$r = Start-Hub $native
+if ($r.code -ne 0) { Say $r.text; exit 1 }
+if ($native -and $r.port -and (Show-Window $r.port)) { exit 0 }
+if ($native) { [void](Start-Hub $false) }     # the window could not be shown: open the browser app window instead

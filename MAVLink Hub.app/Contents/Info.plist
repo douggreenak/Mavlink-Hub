@@ -5,12 +5,13 @@
   <key>CFBundleName</key><string>MAVLink Hub</string>
   <key>CFBundleDisplayName</key><string>MAVLink Hub</string>
   <key>CFBundleIdentifier</key><string>local.mavlink-hub.launcher</string>
-  <key>CFBundleVersion</key><string>1.0</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1.0.3</string>
+  <key>CFBundleShortVersionString</key><string>1.0.3</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>MAVLink Hub</string>
   <key>CFBundleIconFile</key><string>hub</string>
   <key>LSMinimumSystemVersion</key><string>10.13</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict>
 </plist>
