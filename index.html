@@ -41,6 +41,8 @@ main{padding:8px 24px 24px;max-width:1500px;margin:0 auto}
 #hor{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;align-content:start}
 .tile{border-radius:14px;padding:14px 16px;background:var(--sl);border:1px solid var(--out);box-shadow:var(--shadow);min-width:0}
+.tile.over{background:#fbe4e2;border-color:#e5aaa5}.tile.over b{color:#8f221a}.tile.over .lab,.tile.over span{color:#a2453d}
+[data-mode=dark] .tile.over{background:#472629;border-color:#7a3d41}[data-mode=dark] .tile.over b{color:#ffd3cf}[data-mode=dark] .tile.over .lab,[data-mode=dark] .tile.over span{color:#e6aaa6}
 .tile .lab{color:var(--mute);font-size:12.5px;font-weight:600;letter-spacing:.01em;line-height:1.25;min-height:2.5em;align-items:flex-start}
 .tile .lab svg{margin-top:1px}
 .tile .lab svg{color:var(--p)}
@@ -129,6 +131,7 @@ details summary{cursor:pointer;color:var(--mute);font-size:13px;user-select:none
 #snack{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:max-content;max-width:min(90vw,calc(100vw - 32px));background:var(--ink);color:var(--s);padding:12px 20px;border-radius:14px;display:none;font-size:14px;font-weight:500;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:1250}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 
+.pathsl{display:inline-flex;align-items:center;gap:8px}.pathsl input{width:120px;accent-color:var(--p);cursor:pointer}.pathsl b{min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
 .tile b.sm{font-size:20px;line-height:1.6}
 .sens{display:flex;flex-wrap:wrap;gap:8px}
 .sx{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;background:var(--sh);font-size:13px;font-weight:600}
@@ -136,8 +139,15 @@ details summary{cursor:pointer;color:var(--mute);font-size:13px;user-select:none
 .sx small{font-weight:500;color:var(--mute)}.sx.off{font-weight:500;color:var(--mute)}
 .ptick b{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#F6C343;border:1.5px solid #1B2430}
 .ptick span{position:absolute;left:7px;top:-20px;font:600 11px "Roboto Flex",system-ui,sans-serif;color:#1B2430;background:rgba(255,255,255,.88);padding:0 5px;border-radius:5px;white-space:nowrap}
-.aswarn{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1000;max-width:calc(100% - 110px);padding:8px 14px;border-radius:12px;font-weight:600;font-size:14px;line-height:1.3;box-shadow:0 4px 14px rgba(0,0,0,.3);pointer-events:none;text-align:center}
-.aswarn.s3{background:var(--bad);color:#fff}.aswarn.s2{background:var(--amber);color:#2a1d00}.aswarn.s1{background:var(--sl);color:var(--ink);border:1px solid var(--out)}
+.spin{position:absolute;right:12px;top:12px;z-index:1000;width:22px;height:22px;border-radius:50%;box-sizing:border-box;border:3px solid var(--out);border-top-color:var(--p);background:var(--sl);box-shadow:0 2px 8px rgba(0,0,0,.25);animation:spin .8s linear infinite;pointer-events:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+button.chip.loading::after{content:'';display:inline-block;width:11px;height:11px;margin-left:8px;border-radius:50%;box-sizing:border-box;border:2px solid var(--out);border-top-color:var(--p);animation:spin .8s linear infinite;vertical-align:-1px}
+button.chip.on.loading::after{border-color:#ffffff66;border-top-color:var(--op)}
+button.chip.warn{background:var(--warn);color:var(--owarn)}
+@media(prefers-reduced-motion:reduce){.spin,button.chip.loading::after{animation-duration:2.4s}}
+.ashint{position:absolute;left:56px;top:10px;z-index:1000;max-width:calc(100% - 130px);padding:5px 11px;border-radius:10px;background:var(--sl);color:var(--ink);border:1px solid var(--out);font:500 12px "Roboto Flex",system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.25);pointer-events:none}
+.ceil span{position:absolute;transform:translate(-50%,-50%);font:600 10.5px "Roboto Flex",system-ui,sans-serif;color:#0b2a3a;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;pointer-events:none}
+[data-mode=dark] .ceil span{color:#d6f1f8;text-shadow:0 0 3px #000,0 0 3px #000}
 .lgd{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--mute);margin-top:4px}
 .lgd span{display:inline-flex;align-items:center;gap:6px}.lgd i{width:14px;height:14px;border-radius:3px;border:2px solid;display:inline-block}
 .leaflet-popup-content{font:400 13px/1.4 "Roboto Flex",system-ui,sans-serif}
@@ -157,7 +167,7 @@ details summary{cursor:pointer;color:var(--mute);font-size:13px;user-select:none
 </div>
 <div id="map" class="view">
  <div class="card" id="mapmsg" style="display:none"></div>
- <div class="mrow"><button class="chip" id="fol" style="cursor:pointer">Following plane</button><button class="chip" id="lay" style="cursor:pointer">Satellite</button><button class="chip" id="prd" style="cursor:pointer">Path: 15 s</button><button class="chip" id="asb" style="cursor:pointer">Airspace: Off</button><button class="chip" id="dl" style="cursor:pointer">Save this view offline</button></div>
+ <div class="mrow"><button class="chip" id="fol" style="cursor:pointer">Following plane</button><button class="chip" id="lay" style="cursor:pointer">Satellite</button><label class="chip pathsl" title="How far ahead the turn path is drawn. Off at the left.">Path <input type="range" id="prd" min="0" max="60" step="5" value="15" aria-label="Seconds ahead for the predicted path"><b id="prdv">15 s</b></label><button class="chip" id="asb" style="cursor:pointer">Airspace: Off</button><button class="chip" id="dl" style="cursor:pointer">Save this view offline</button></div>
  <div class="card" id="asp" style="display:none">
   <h2>Airspace<span id="asst" class="mute small"></span></h2>
   <div class="mrow" id="asl">
@@ -277,8 +287,18 @@ function lossPct(){ // share of frames missing over the last ~10 s; null until t
  for(const x of LOSS)if(x.s>sec-10&&x.s<=sec){got+=x.got;lost+=x.lost}
  return got+lost<20?null:100*lost/(got+lost)
 }
+// Turn rate from how the direction of travel changed between two consecutive position reports. Holding it as a
+// steady value between reports and smoothing that is far calmer than differentiating a filtered course.
+const CR={c:null,t:0,rate:0},CT={n:-1,base:null,tgt:0};
+function noteCourse(f){
+ const now=Date.now(),vn=f.vx/100,ve=f.vy/100;
+ if(Math.hypot(vn,ve)<1.5){CR.c=null;CR.rate=0;return}
+ const c=Math.atan2(ve,vn)*57.2958;
+ if(CR.c!=null){const dt=(now-CR.t)/1000;if(dt>.05&&dt<2.5)CR.rate=(((c-CR.c)%360+540)%360-180)/dt}else CR.rate=0;
+ CR.c=c;CR.t=now;
+}
 function onMessage(name,f){
- if(name==='GLOBAL_POSITION_INT'){const g=gpsState();if((f.lat||f.lon)&&g.state!=='nofix'&&g.state!=='none')addP(f.lat/1e7,f.lon/1e7)}
+ if(name==='GLOBAL_POSITION_INT'){const g=gpsState();if((f.lat||f.lon)&&g.state!=='nofix'&&g.state!=='none')addP(f.lat/1e7,f.lon/1e7);noteCourse(f)}
  else if(name==='GPS_GLOBAL_ORIGIN'){Home=f.latitude||f.longitude?{lat:f.latitude/1e7,lon:f.longitude/1e7}:null}
  else if(name==='HEARTBEAT'){
   const armed=!!(f.base_mode&128);
@@ -385,7 +405,10 @@ function render(){
   const noGps=g.state==='absent'||g.state==='nofix'||g.state==='none',noPitot=hasSensor(SENSOR.PITOT)===false;
   const fixTxt=gps.fix_type>=3?'3D fix':gps.fix_type===2?'2D fix':gps.fix_type==null?'':'no fix';
   const altNote=V.GLOBAL_POSITION_INT&&gpsUsable()?' above home':' (from HUD)';
-  const T=[['Altitude',f(CV.len(Z.alt)),UN.len()+altNote],
+  const live=Date.now()-lastRx<2500,here=live&&gpsUsable()&&V.GLOBAL_POSITION_INT&&Z.lat!=null;
+  if(here)limRefresh(Z.lat,Z.lon);
+  const lim=here?altLimit(Z.lat,Z.lon):null,over=lim&&altOver(Z.alt*3.28084,lim.ft);if(!lim)ALT.over=false;
+  const T=[['Altitude',f(CV.len(Z.alt)),UN.len()+altNote+(lim?' · limit '+f(CV.len(lim.ft*.3048))+' '+UN.len():''),over?'over':''],
    ['Ground speed',noGps?'–':f(CV.spd(Z.gs)),noGps?(g.state==='absent'?'no GPS':'no GPS fix'):UN.spd()],
    ['Airspeed',noPitot?'–':f(CV.spd(Z.as)),noPitot?'no airspeed sensor':UN.spd()],
    ['Climb',f(CV.vs(Z.climb),imp()?0:1),UN.vs()],
@@ -397,13 +420,13 @@ function render(){
    ['Distance from start',noGps||hm==null?'–':f(CV.len(hm)),UN.len()+(Home?' from home':' from start')],
    ['RSSI',f(rssiRaw()),'raw'],['Pitch',f(Z.pitch*57.2958),'°'],['Roll',f(Z.roll*57.2958),'°'],
    ['Flight mode',modeName(hb)||'–','flight mode']];
-  $('tiles').innerHTML=T.map(([k,v,u])=>tileHTML(k,v,u)).join('');
+  $('tiles').innerHTML=T.map(([k,v,u,c])=>tileHTML(k,v,u,c)).join('');
   const n=rc.chancount||0;let h='';
   for(let i=1;i<=n&&i<=18;i++){const v=rc['chan'+i+'_raw'],okc=v>0&&v!==65535; // 0 / 65535 = channel not available
    h+=`<div>CH${i} ${okc?v:'–'}<div class="bar"><i style="width:${okc?clamp((v-1000)/10,0,100):0}%"></i></div></div>`}
   $('rc').innerHTML=n?h:'No RC channel data received yet.';renderExtra();
  }
- if(view==='map'){mapUpdate();asWatch()}
+ if(view==='map')mapUpdate();
  if(view==='all'){
   let h=Object.entries(V).sort().map(([m,r])=>`<div class="card"><h3>${m}<span>${(r.n/Math.max(1,(Date.now()-r.t0)/1000)).toFixed(1)} Hz · ${((Date.now()-r.t)/1000).toFixed(1)} s ago</span></h3><dl>${Object.entries(r.f).map(([k,v])=>`<dt>${k}</dt><dd>${esc(fv(m,k,v))}</dd>`).join('')}</dl></div>`).join('');
   const us=Object.entries(U);if(us.length)h+=`<div class="card"><h3>Unrecognised messages</h3><dl>${us.map(([id,q])=>`<dt>ID ${id} (${q.len} bytes)</dt><dd>${q.n} received</dd>`).join('')}</dl></div>`;
@@ -458,14 +481,20 @@ function step(dt){
   sm('alt',gp.relative_alt/1000,k,dt);
   trackPos(gp,now);
   sm('vn',vn,k,dt);sm('ve',ve,k,dt);
-  if(Math.hypot(vn,ve)>1.5)sm('crs',(Math.atan2(ve,vn)*57.2958+360)%360,k,dt,360); // direction of travel, not where the nose points
+  if(Math.hypot(vn,ve)>1.5&&V.GLOBAL_POSITION_INT.n!==CT.n){ // direction of travel (not where the nose points), measured at each report
+   CT.n=V.GLOBAL_POSITION_INT.n;const m=Math.atan2(ve,vn)*57.2958;
+   if(CT.base==null){CT.base=m;CT.tgt=0;Z.crs=m}else CT.tgt+=((m-(CT.base+CT.tgt))%360+540)%360-180}
  }else if(vh&&!(gp&&gpsOk))sm('alt',vh.alt,sti('VFR_HUD',.4),dt); // no GPS: altitude from the HUD message
  // Turn rate (deg/s, + = clockwise). INAV's ATTITUDE rate fields are gyro deg/s labelled as rad/s, so they are not used.
  // Fixed wings bank into turns: a coordinated turn gives a rate ahead of the heading change; blend with what was measured.
- if(Z.crs!=null){
-  const spd=Math.hypot(Z.vn||0,Z.ve||0);let r=ZV.crs||0;
-  if(V.HEARTBEAT?.f.type===1&&Z.roll!=null&&Math.abs(Z.roll)<1.3)r=.5*(57.2958*9.81*Math.tan(Z.roll)/Math.max(5,spd,Z.as||0))+.5*r;
-  sm('trate',clamp(r,-120,120),.1,dt)
+ if(CT.base!=null){
+  const spd=Math.hypot(Z.vn||0,Z.ve||0);
+  sm('crm',Date.now()-CR.t<2500?CR.rate:0,K1,dt);let r=Z.crm||0;
+  if(V.HEARTBEAT?.f.type===1&&Z.roll!=null&&Math.abs(Z.roll)<1.3)r=RW*(57.2958*9.81*Math.tan(Z.roll)/Math.max(5,spd,Z.as||0))+(1-RW)*r;
+  sm('trate',clamp(r,-120,120),TR_K,dt);
+  // The course keeps turning at that rate between reports, so it neither lags nor pulses. What each report disagrees by is
+  // fed in through a critically damped filter, so the turn rate stays continuous instead of jumping at every report.
+  CT.base+=(Z.trate||0)*dt;sm('cadj',CT.tgt,CT_K,dt);Z.crs=CT.base+Z.cadj
  }
  if(ss){const b=battState(),k=sti('SYS_STATUS',.8);if(b.vOK)sm('v',ss.voltage_battery/1000,k,dt);if(b.aOK)sm('a',ss.current_battery/100,k,dt)}
 }
@@ -482,8 +511,10 @@ function predictPath(la,lo,crs,spd,rate,horizon,steps=36){
  for(let i=0;i<=steps;i++){const t=maxT*i/steps;pts.push(pathPoint(la,lo,crs,spd,rate,t));ts.push(t)}
  return{pts,ts,maxT,radius:w>1e-4?spd/w:Infinity}
 }
-let lpred,lpredT=[],predOn=false,predT=15,asBanner;
-try{const v=+localStorage.getItem('predT');if([0,15,30,60].includes(v)&&localStorage.getItem('predT')!=null)predT=v}catch(e){}
+// Smoothing: the turn-rate estimate, each report's correction to the course, and the rate between reports; and how far to trust bank angle (fixed wings).
+const TR_K=.05,CT_K=.4,K1=.05,RW=.85;
+let lpred,lpredT=[],predOn=false,predT=15;
+try{const raw=localStorage.getItem('predT');if(raw!=null&&raw!==''){const v=+raw;if(Number.isFinite(v)&&v>=0&&v<=60)predT=Math.round(v/5)*5}}catch(e){}
 function updatePrediction(la,lo){
  const live=Date.now()-lastRx<2500,spd=Math.hypot(Z.vn||0,Z.ve||0);
  const ok=predT>0&&live&&gpsUsable()&&Z.crs!=null&&spd>1.5;
@@ -512,7 +543,7 @@ function frame(now){
 let layer='street',tileL;
 function setLayer(){
  if(tileL)lm.removeLayer(tileL);
- tileL=L.tileLayer('/tiles/'+layer+'/{z}/{x}/{y}',{maxZoom:19,attribution:layer==='street'?'© OpenStreetMap':'Tiles © Esri'}).addTo(lm);
+ tileL=trackBusy(L.tileLayer('/tiles/'+layer+'/{z}/{x}/{y}',{maxZoom:19,attribution:layer==='street'?'© OpenStreetMap':'Tiles © Esri'})).addTo(lm);
  $('lf').classList.toggle('street',layer==='street');
 }
 $('lay').onclick=()=>{layer=layer==='street'?'sat':'street';$('lay').textContent=layer==='street'?'Satellite':'Street map';if(lm)setLayer()};
@@ -632,6 +663,43 @@ $('omz0').onchange=$('omz1').onchange=e=>{for(const r of document.querySelectorA
  if(+$('omz0').value>+$('omz1').value)(e.target===$('omz0')?$('omz1'):$('omz0')).value=e.target.value;omSync();omPlan()};
 $('omcov').onchange=drawCov;
 $('nav').addEventListener('click',e=>{if(e.target.dataset.v==='maps'){omInit();setTimeout(()=>{if(om){om.invalidateSize();omRefresh()}},80)}});
+// ---- A small spinner in the map's corner while map or airspace data is still loading (only if it takes a moment) ----
+let busyN=0,busyT=null,busyEl=null,busyShown=false;
+// The spinner is in two places that are always in view: a ring inside the Airspace button, and the map's top-right corner.
+function spin(on){busyShown=on;if(busyEl)busyEl.style.display=on?'block':'none';const c=$('asb');if(c)c.classList.toggle('loading',on)}
+function busy(d){
+ busyN=Math.max(0,busyN+d);
+ if(!busyN){clearTimeout(busyT);busyT=null;spin(false)}
+ else if(!busyT&&!busyShown)busyT=setTimeout(()=>{busyT=null;if(busyN)spin(true)},300)
+}
+function trackBusy(layer){ // balanced even if the layer is removed part-way through loading
+ let on=false;
+ layer.on('loading',()=>{if(!on){on=true;busy(1)}});
+ layer.on('load',()=>{if(on){on=false;busy(-1)}});
+ layer.on('remove',()=>{if(on){on=false;busy(-1)}});
+ return layer
+}
+// ---- Altitude ceiling for where we are: from the FAA drone-ceiling grid, or an FAA recreational flying site if inside one ----
+const LIM={box:null,data:{uasfm:[],sites:[]},busy:false,t:0,err:null},ALT={over:false};
+function altLimit(lat,lon,data=LIM.data){
+ let site=null,grid=null;
+ for(const k in data)for(const f of data[k]){const p=f.properties,b=p.bb;
+  if(lon<b[0]||lon>b[2]||lat<b[1]||lat>b[3]||!geomHas(f.geometry,lon,lat))continue;
+  if(p.kind==='site'&&p.ceilFt!=null)site=Math.max(site??0,p.ceilFt);
+  else if(p.kind==='uasfm'&&p.ceilingFt!=null)grid=grid==null?p.ceilingFt:Math.min(grid,p.ceilingFt)}
+ const ft=site!=null?site:grid;return ft==null?null:{ft,src:site!=null?'flying site':'drone ceiling grid'}
+}
+// Over the limit once 5 ft above it; back to normal as soon as at or below it (so the tile does not flicker on the edge).
+const altOver=(altFt,limFt)=>ALT.over=ALT.over?altFt>limFt:altFt>limFt+5;
+function limRefresh(lat,lon){
+ const now=Date.now(),b=LIM.box,dl=.06,dn=dl/Math.max(.2,Math.cos(lat*Math.PI/180));
+ if(LIM.busy||now-LIM.t<5000||(b&&lat>b.s+dl*.4&&lat<b.n-dl*.4&&lon>b.w+dn*.4&&lon<b.e-dn*.4))return;
+ LIM.busy=true;LIM.t=now;const box={w:lon-dn,e:lon+dn,s:lat-dl,n:lat+dl};
+ fetch(`/airspace?layers=uasfm,sites&w=${box.w}&s=${box.s}&e=${box.e}&n=${box.n}`).then(r=>r.json()).then(r=>{
+  LIM.busy=false;if(!r.layers)return;LIM.box=box;
+  for(const k of['uasfm','sites']){const l=r.layers[k];LIM.data[k]=l?l.features:[]}
+ }).catch(()=>{LIM.busy=false});
+}
 // ---- Airspace on the map: drawn from the hub (which fetches and caches it), with warnings ----
 // [label, colour, fill opacity, severity (3 red, 2 amber, 1 note, 0 none), weight, dash]
 const AS_KIND={
@@ -641,13 +709,12 @@ const AS_KIND={
  warning:['Warning area','#f08c00',.14,1,2,'6 4'],alert:['Alert area','#f08c00',.12,1,2,'2 4'],danger:['Danger area','#f08c00',.14,1,2,'6 4'],moa:['Military operations area','#d97706',.06,0,1.5,'8 6'],special:['Special use airspace','#d97706',.10,1,2,''],
  site:['Recreational flying site','#16a34a',.18,0,2,''],custom:['Your own area','#7c3aed',.15,2,2,'']
 };
-const UAS_STYLE=c=>c===0?['#dc2626',.35]:c<=100?['#f97316',.28]:c<=200?['#eab308',.22]:['#22c55e',.14];
+const UAS_STYLE=c=>c===0?['#c026d3',.30]:c<=100?['#d9a400',.24]:c<=200?['#a3a300',.14]:['#22c55e',.10];
 const AS_LABEL={controlled:'Controlled airspace',special:'Restricted & military',tfr:'Flight restrictions',uasfm:'Drone ceilings',sites:'RC flying sites',local:'Your own files'};
-const AS={on:false,layers:{controlled:true,special:true,tfr:true,sites:true,uasfm:false,local:true},grp:{},data:{},status:null,tmr:null,tok:0,wt:0,box:null,banner:'',lastKey:''};
-try{const o=JSON.parse(localStorage.getItem('as')||'{}');if(typeof o.on==='boolean')AS.on=o.on;if(o.layers)Object.assign(AS.layers,o.layers)}catch(e){}
-const asSave=()=>{try{localStorage.setItem('as',JSON.stringify({on:AS.on,layers:AS.layers}))}catch(e){}};
-const asSev=p=>p.kind==='uasfm'?(p.ceilingFt===0?2:0):(AS_KIND[p.kind]||AS_KIND.custom)[3];
-function asStyle(f){const p=f.properties;if(p.kind==='uasfm'){const[c,o]=UAS_STYLE(p.ceilingFt);return{color:c,weight:.8,fillColor:c,fillOpacity:o}}
+const AS={on:true,layers:{controlled:true,special:true,tfr:true,sites:true,uasfm:true,local:true},grp:{},data:{},status:null,tmr:null,tok:0,box:null};
+try{const o=JSON.parse(localStorage.getItem('as2')||'{}');if(typeof o.on==='boolean')AS.on=o.on;if(o.layers)Object.assign(AS.layers,o.layers)}catch(e){}
+const asSave=()=>{try{localStorage.setItem('as2',JSON.stringify({on:AS.on,layers:AS.layers}))}catch(e){}};
+function asStyle(f){const p=f.properties;if(p.kind==='uasfm'){const[c,o]=UAS_STYLE(p.ceilingFt);return{color:'#4a90e2',weight:.7,opacity:.7,fillColor:c,fillOpacity:o}}
  const k=AS_KIND[p.kind]||AS_KIND.custom;return{color:k[1],weight:k[4],dashArray:k[5],fillColor:k[1],fillOpacity:k[2]}}
 const asRange=p=>p.kind==='uasfm'?'drone ceiling '+p.ceilingFt+' ft':(p.floorTxt||'?')+' to '+(p.ceilTxt||'no published limit');
 const asPopup=p=>`<b>${esc(p.name)}</b><br>${esc(p.kind==='uasfm'?'FAA drone ceiling grid':(AS_KIND[p.kind]||AS_KIND.custom)[0])}<br>${esc(asRange(p))}${p.note?`<br><small>${esc(p.note)}</small>`:''}`;
@@ -655,41 +722,6 @@ const asPopup=p=>`<b>${esc(p.name)}</b><br>${esc(p.kind==='uasfm'?'FAA drone cei
 function ringHas(r,x,y){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1];if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)c=!c}return c}
 function polyHas(poly,x,y){if(!ringHas(poly[0],x,y))return false;for(let k=1;k<poly.length;k++)if(ringHas(poly[k],x,y))return false;return true}
 function geomHas(g,lon,lat){if(!g)return false;if(g.type==='Polygon')return polyHas(g.coordinates,lon,lat);if(g.type==='MultiPolygon')return g.coordinates.some(q=>polyHas(q,lon,lat));return false}
-// Features that matter to low flying and contain this point.
-function asAt(lat,lon,data=AS.data){
- const out=[];
- for(const k in data)for(const f of data[k]){const p=f.properties,b=p.bb;
-  if(lon<b[0]||lon>b[2]||lat<b[1]||lat>b[3])continue;
-  if(p.floorFt!=null&&p.floorFt>400)continue;
-  if(geomHas(f.geometry,lon,lat))out.push(f)}
- return out
-}
-const worst=list=>{let w=null;for(const f of list){const s=asSev(f.properties);if(s>=1&&(!w||s>w.s))w={s,f}}return w};
-// Where will the predicted path first enter something worth a warning (amber or red) that we are not already in?
-function asPathHit(pr,data=AS.data){
- const inside=new Set(asAt(pr.pts[0][0],pr.pts[0][1],data).map(f=>f.properties.key));
- for(let i=1;i<pr.pts.length;i++){
-  const w=worst(asAt(pr.pts[i][0],pr.pts[i][1],data).filter(f=>!inside.has(f.properties.key)&&asSev(f.properties)>=2));
-  if(w)return{f:w.f,s:w.s,t:pr.ts[i]}}
- return null
-}
-function asSetBanner(sev,text){
- const k=sev+'|'+text;if(!asBanner||k===AS.lastKey)return;AS.lastKey=k;
- asBanner.className='aswarn s'+sev;asBanner.textContent=text;asBanner.style.display=sev?'block':'none'
-}
-function asWatch(){
- if(!lm||!AS.on||!asBanner)return;
- const now=Date.now();if(now-AS.wt<250)return;AS.wt=now;
- const spd=Math.hypot(Z.vn||0,Z.ve||0);
- if(now-lastRx>2500||!P.length||!gpsUsable()||Z.lat==null){asSetBanner(0,'');return}
- const here=worst(asAt(Z.lat,Z.lon));
- if(here){asSetBanner(here.s,'Inside '+here.f.properties.name+' ('+asRange(here.f.properties)+')');return}
- if(predT>0&&spd>1.5&&Z.crs!=null){
-  const hit=asPathHit(predictPath(Z.lat,Z.lon,Z.crs,spd,Z.trate||0,predT),AS.data);
-  if(hit){asSetBanner(hit.s,'Path enters '+hit.f.properties.name+' in '+Math.round(hit.t)+' s');return}
- }
- asSetBanner(0,'')
-}
 const asAgo=ms=>{const m=Math.round((Date.now()-ms)/60000);return m<2?'just now':m<120?m+' min ago':m<2880?Math.round(m/60)+' h ago':Math.round(m/1440)+' days ago'};
 function asStatus(){
  const r=AS.status;
@@ -703,23 +735,60 @@ function asStatus(){
  $('asst').textContent=bad.length?'Some data is unavailable':'';
  $('asdet').textContent=parts.join('  ·  ')+(bad.length?'  ·  '+bad.join(' ; '):'');
 }
+// The FAA drone-ceiling grid, labelled with each cell's ceiling in feet, once cells are big enough on screen to read.
+function ceilLabels(feats,b,cellPx){
+ if(cellPx<16)return[];const out=[];
+ for(const f of feats){const p=f.properties;if(p.kind!=='uasfm')continue;
+  const cx=(p.bb[0]+p.bb[2])/2,cy=(p.bb[1]+p.bb[3])/2;
+  if(cx<b.w||cx>b.e||cy<b.s||cy>b.n)continue;
+  out.push({lat:cy,lon:cx,text:String(p.ceilingFt)});if(out.length>=800)break}
+ return out
+}
+function asLabels(){
+ if(!lm||!AS.lbl)return;AS.lbl.clearLayers();
+ const feats=AS.on&&AS.layers.uasfm?AS.data.uasfm||[]:[];AS.small=false;if(!feats.length){asHint();return}
+ const bb=feats[0].properties.bb,cellPx=Math.abs(lm.latLngToContainerPoint([bb[1],bb[2]]).x-lm.latLngToContainerPoint([bb[1],bb[0]]).x),g=lm.getBounds();
+ AS.small=cellPx<16;
+ for(const l of ceilLabels(feats,{w:g.getWest(),s:g.getSouth(),e:g.getEast(),n:g.getNorth()},cellPx))
+  L.marker([l.lat,l.lon],{pane:'ceil',interactive:false,keyboard:false,icon:L.divIcon({className:'ceil',html:'<span>'+l.text+'</span>',iconSize:[0,0]})}).addTo(AS.lbl);
+ asHint()
+}
+// A short note on the map itself when something the user switched on is not showing, and why.
+function asHint(){
+ const el=AS.hint;if(!el)return;let t='';const r=AS.status;
+ if(AS.on&&r){
+  if(r.error)t='Airspace: '+r.error;
+  else{const sk=Object.keys(AS.layers).filter(k=>AS.layers[k]&&r.layers[k]?.skipped).map(k=>AS_LABEL[k]);
+   const bad=Object.keys(AS.layers).some(k=>AS.layers[k]&&r.layers[k]?.errors.length&&!r.layers[k].features.length);
+   if(sk.length)t=sk.join(', ')+': zoom in to see';
+   else if(bad)t='Airspace data unavailable for this area (no internet, nothing saved yet)';
+   else if(AS.small&&AS.layers.uasfm)t='Zoom in to see the ceiling numbers'}
+ }
+ el.textContent=t;el.style.display=t?'block':'none';
+ const bad=!!AS.on&&!!r&&(!!r.error||Object.keys(AS.layers).some(k=>AS.layers[k]&&r.layers?.[k]?.errors.length&&!r.layers[k].features.length));
+ const b=$('asb');if(b){b.classList.toggle('warn',bad);b.title=t}
+ if(t)$('asst').textContent=t
+}
 function asInit(){
+ lm.createPane('ceil').style.zIndex=360;AS.lbl=L.layerGroup().addTo(lm);
+ busyEl=document.createElement('div');busyEl.className='spin';busyEl.style.display='none';busyEl.setAttribute('role','status');busyEl.setAttribute('aria-label','Loading map data');lm.getContainer().appendChild(busyEl);busyEl.style.display=busyShown?'block':'none';if(busyN)busy(0);
+ AS.hint=document.createElement('div');AS.hint.className='ashint';AS.hint.style.display='none';lm.getContainer().appendChild(AS.hint);
  const rend=L.canvas({pane:'airspace',padding:.4});lm.createPane('airspace').style.zIndex=350;
  for(const k of Object.keys(AS.layers))AS.grp[k]=L.geoJSON(null,{pane:'airspace',renderer:rend,style:asStyle,onEachFeature:(f,l)=>l.bindPopup(asPopup(f.properties))});
- asBanner=document.createElement('div');asBanner.className='aswarn s0';asBanner.style.display='none';lm.getContainer().appendChild(asBanner);
- lm.on('moveend',()=>asSchedule(false));asUI();asApply()
+ lm.on('moveend',()=>{asSchedule(false);asLabels()});asUI();asApply()
 }
 function asUI(){
  $('asb').textContent='Airspace: '+(AS.on?'On':'Off');$('asb').classList.toggle('on',AS.on);$('asp').style.display=AS.on?'':'none';
  for(const c of document.querySelectorAll('[data-asl]'))c.checked=!!AS.layers[c.dataset.asl];
  $('aslg').innerHTML=['prohibited','restricted','tfr','class-b','class-c','class-d','class-e','warning','site'].map(k=>`<span><i style="border-color:${AS_KIND[k][1]};background:${AS_KIND[k][1]}33"></i>${AS_KIND[k][0]}</span>`).join('')+
-  '<span><i style="border-color:#dc2626;background:#dc262655"></i>Drone ceiling 0 ft</span><span><i style="border-color:#22c55e;background:#22c55e33"></i>400 ft</span>'
+  '<span><i style="border-color:#c026d3;background:#c026d366"></i>Drone ceiling 0 ft</span><span><i style="border-color:#d9a400;background:#d9a40055"></i>100 ft</span><span><i style="border-color:#22c55e;background:#22c55e33"></i>400 ft</span><span>Numbers on the grid: highest altitude in feet above ground</span>'
 }
 function asApply(){
  if(!lm)return;
  if(AS.on&&!AS.dir)fetch('/info').then(r=>r.json()).then(j=>{AS.dir=j.airspaceDir;if(AS.dir)$('asdir').textContent='Your own GeoJSON files (any country, or places to avoid) go in: '+AS.dir}).catch(()=>{});
  for(const k of Object.keys(AS.grp)){const show=AS.on&&AS.layers[k];if(show&&!lm.hasLayer(AS.grp[k]))AS.grp[k].addTo(lm);if(!show){lm.removeLayer(AS.grp[k]);AS.grp[k].clearLayers();AS.data[k]=[]}}
- if(!AS.on){asSetBanner(0,'');AS.status=null;asStatus();return}
+ asLabels();
+ if(!AS.on){AS.status=null;asStatus();return}
  asSchedule(true)
 }
 // Reload only when the view leaves what was loaded, or a layer that was too wide before may now fit.
@@ -731,18 +800,23 @@ function asSchedule(force){
 async function asLoad(){
  if(!lm||!AS.on)return;
  const want=Object.keys(AS.layers).filter(k=>AS.layers[k]);if(!want.length)return;
- const tok=++AS.tok,b=lm.getBounds().pad(.25);AS.box=b;
- const q=`layers=${want.join(',')}&w=${b.getWest()}&s=${b.getSouth()}&e=${b.getEast()}&n=${b.getNorth()}`;
- let r;try{r=await fetch('/airspace?'+q).then(r=>r.json())}catch(e){r={error:'Could not reach the hub'}}
+ const tok=++AS.tok;let b=lm.getBounds().pad(.25);busy(1);
+ try{
+ const ask=async b=>{const q=`layers=${want.join(',')}&w=${b.getWest()}&s=${b.getSouth()}&e=${b.getEast()}&n=${b.getNorth()}`;
+  try{return await fetch('/airspace?'+q).then(r=>r.json())}catch(e){return{error:'Could not reach the hub'}}};
+ let r=await ask(b);
+ if(r.layers&&Object.values(r.layers).some(l=>l.skipped)){const v=lm.getBounds();const r2=await ask(v);if(r2.layers&&Object.values(r2.layers).filter(l=>l.skipped).length<Object.values(r.layers).filter(l=>l.skipped).length){r=r2;b=v}} // the margin may be what made it too wide
+ AS.box=b;
  if(tok!==AS.tok)return;
  AS.status=r;
  if(r.layers)for(const k of Object.keys(AS.grp)){AS.grp[k].clearLayers();const l=r.layers[k];AS.data[k]=l&&AS.layers[k]?l.features:[];if(AS.data[k].length&&AS.layers[k])AS.grp[k].addData(AS.data[k])}
- asStatus()
+ asLabels();asStatus();asHint()
+ }finally{busy(-1)}
 }
 $('asb').onclick=()=>{AS.on=!AS.on;asSave();asUI();asApply()};
 $('asl').onchange=e=>{const k=e.target.dataset.asl;if(k){AS.layers[k]=e.target.checked;asSave();asApply()}};
-$('prd').onclick=()=>{const o=[0,15,30,60];predT=o[(o.indexOf(predT)+1)%o.length];try{localStorage.setItem('predT',predT)}catch(e){}predUI()};
-const predUI=()=>{$('prd').textContent='Path: '+(predT?predT+' s':'Off');$('prd').classList.toggle('on',predT>0);if(!predT&&lm)updatePrediction(Z.lat,Z.lon)};
+$('prd').oninput=()=>{const v=+$('prd').value;predT=Number.isFinite(v)?clamp(Math.round(v/5)*5,0,60):15;try{localStorage.setItem('predT',predT)}catch(e){}predUI()};
+const predUI=()=>{$('prd').value=predT;$('prdv').textContent=predT?predT+' s':'Off';if(!predT&&lm)updatePrediction(Z.lat,Z.lon)};
 predUI();asUI();
 // ---- QR code: scan with a phone to open this dashboard ----
 function drawQR(url){
@@ -802,7 +876,7 @@ const CV={spd:v=>imp()?v*2.23694:v*3.6,len:v=>imp()?v*3.28084:v,vs:v=>imp()?v*19
 const UN={spd:()=>imp()?'mph':'km/h',len:()=>imp()?'ft':'m',vs:()=>imp()?'ft/min':'m/s'};
 const dist=m=>imp()?(m*3.28084<5280?[(m*3.28084).toFixed(0),'ft']:[(m/1609.34).toFixed(2),'mi']):(m<1000?[m.toFixed(0),'m']:[(m/1000).toFixed(2),'km']);
 const dlab=s=>imp()?(s*3.28084>=5280?(s/1609.34).toFixed(1)+' mi':Math.round(s*3.28084)+' ft'):(s>=1000?s/1000+' km':s+' m');
-const tileHTML=(k,v,u)=>`<div class="tile hideable${cfg.hidden.includes(k)?' off':''}" data-key="${k}"><span class="lab">${ic(k)}${k}</span><b${String(v).length>6?' class="sm"':''}>${v}</b><span>${u}</span></div>`;
+const tileHTML=(k,v,u,c)=>`<div class="tile hideable${cfg.hidden.includes(k)?' off':''}${c?' '+c:''}" data-key="${k}"><span class="lab">${ic(k)}${k}</span><b${String(v).length>6?' class="sm"':''}>${v}</b><span>${u}</span></div>`;
 function applyCfg(){
  document.body.classList.toggle('editing',editing);
  for(const el of document.querySelectorAll('.hideable'))el.classList.toggle('off',cfg.hidden.includes(el.dataset.key));

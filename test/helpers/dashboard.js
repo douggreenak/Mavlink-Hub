@@ -25,7 +25,7 @@ function fakeElement() {
   });
 }
 
-function loadDashboard({ start = Date.UTC(2026, 10, 8, 12, 0, 0) } = {}) {
+function loadDashboard({ start = Date.UTC(2026, 10, 8, 12, 0, 0), storage = {} } = {}) {
   const html = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
   const src = html.slice(html.indexOf('<script>') + 8, html.lastIndexOf('</script>'));
   const clock = { t: start };
@@ -39,7 +39,7 @@ function loadDashboard({ start = Date.UTC(2026, 10, 8, 12, 0, 0) } = {}) {
     document: { getElementById: el, querySelectorAll: () => [], querySelector: () => null, addEventListener: () => {}, body: fakeElement(), documentElement: fakeElement(), createElement: () => fakeElement() },
     getComputedStyle: () => ({ getPropertyValue: () => '' }),
     matchMedia: () => ({ matches: false, addEventListener: () => {} }),
-    localStorage: { getItem: () => null, setItem: () => {} },
+    localStorage: { getItem: (k) => (k in storage ? storage[k] : null), setItem: (k, v) => { storage[k] = String(v); } },
     location: { protocol: 'http:', hostname: 'localhost', origin: 'http://localhost:8080' },
     EventSource: class { addEventListener() {} },
     fetch: () => new Promise(() => {}),
@@ -52,9 +52,9 @@ function loadDashboard({ start = Date.UTC(2026, 10, 8, 12, 0, 0) } = {}) {
   const D = vm.runInContext(`({
     feed, crc, defs, V, U, P, Z, ZV, MX, St, CV, UN, dist, addP, upStats, sm, esc, step, render, renderConn, horizon,
     gpsState, gpsUsable, battState, hasSensor, SENSOR, modeName, rcFields, rssiRaw, homeDist, lossPct, sti, mapMessage,
-    predictPath, pathPoint, geomHas, asAt, asPathHit, asSev, AS,
+    predictPath, pathPoint, ceilLabels, LIM, ALT, altLimit, altOver, geomHas, AS, busy, trackBusy, setBusyEl: (e) => { busyEl = e; }, busyCount: () => busyN,
     ok: () => ok, bad: () => bad, home: () => Home, tail: () => tail, dropTail: () => { tail = null; },
-    setPredT: (v) => { predT = v; }, snack: $('snack'), tiles: () => $('tiles').innerHTML, sens: () => $('sens').innerHTML,
+    setPredT: (v) => { predT = v; }, getPredT: () => predT, snack: $('snack'), tiles: () => $('tiles').innerHTML, sens: () => $('sens').innerHTML,
     last: () => lastRx })`, sandbox);
   // Deliver one datagram "now".
   const feed = (buf) => D.feed(new Uint8Array(buf));

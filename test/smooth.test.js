@@ -15,7 +15,7 @@ function record(profile, seconds = 90, warm = 25) {
   h.run(sim, seconds, { onFrame: (t) => {
     if (D.Z.lat == null) return;
     if (prev) { const step = M(D.Z.lat, D.Z.lat, D.Z.lon, prev.lat, prev.lon);
-      rows.push({ t, step, dstep: prevStep == null ? 0 : Math.abs(step - prevStep), err: M(D.Z.lat, D.Z.lat, D.Z.lon, sim.state.lat, sim.state.lon), rate: D.Z.trate || 0, roll: D.Z.roll, truth: { lat: sim.state.lat, lon: sim.state.lon }, snap: { lat: D.Z.lat, lon: D.Z.lon, crs: D.Z.crs, spd: Math.hypot(D.Z.vn, D.Z.ve), rate: D.Z.trate || 0 } });
+      rows.push({ t, step, dstep: prevStep == null ? 0 : Math.abs(step - prevStep), err: M(D.Z.lat, D.Z.lat, D.Z.lon, sim.state.lat, sim.state.lon), rate: D.Z.trate || 0, roll: D.Z.roll, truth: { lat: sim.state.lat, lon: sim.state.lon }, snap: { lat: D.Z.lat, lon: D.Z.lon, crs: D.Z.crs, spd: Math.hypot(D.Z.vn, D.Z.ve), rate: D.Z.trate || 0, raw: Math.atan2(D.V.GLOBAL_POSITION_INT.f.vy, D.V.GLOBAL_POSITION_INT.f.vx) * 57.2958, rawSpd: Math.hypot(D.V.GLOBAL_POSITION_INT.f.vx, D.V.GLOBAL_POSITION_INT.f.vy) / 100 } });
       prevStep = step; }
     prev = { lat: D.Z.lat, lon: D.Z.lon };
   } });
@@ -71,20 +71,23 @@ test('smoothing time follows the real message rate (never snappier than the base
   assert.ok(slow.D.sti('ATTITUDE', .15) <= .6);
 });
 
-test('the turn-aware path is closer to where the aircraft goes than a straight line, 3 and 5 s out', () => {
-  const { rows, D } = record(['full'], 140, 25);
-  const bySec = rows.filter((_, i) => i % 15 === 0);
+test('the predicted path is closer to where the aircraft goes than a straight line, 3 and 5 s out', () => {
+  const { rows, D } = record(['full'], 140, 25), bySec = rows.filter((_, i) => i % 15 === 0), res = {};
   for (const horizon of [3, 5]) {
-    let a = 0, b = 0, n = 0;
+    let a = 0, same = 0, plain = 0, n = 0;
     for (const r of bySec) {
       const f = rows.reduce((x, y) => Math.abs(y.t - (r.t + horizon)) < Math.abs(x.t - (r.t + horizon)) ? y : x);
       if (Math.abs(f.t - (r.t + horizon)) > 0.05) continue;
-      const p = D.pathPoint(r.snap.lat, r.snap.lon, r.snap.crs, r.snap.spd, r.snap.rate, horizon), s = D.pathPoint(r.snap.lat, r.snap.lon, r.snap.crs, r.snap.spd, 0, horizon);
-      a += M(r.snap.lat, p[0], p[1], f.truth.lat, f.truth.lon); b += M(r.snap.lat, s[0], s[1], f.truth.lat, f.truth.lon); n++;
+      const s = r.snap, err = (p) => M(s.lat, p[0], p[1], f.truth.lat, f.truth.lon);
+      a += err(D.pathPoint(s.lat, s.lon, s.crs, s.spd, s.rate, horizon));                    // what the dashboard draws
+      same += err(D.pathPoint(s.lat, s.lon, s.crs, s.spd, 0, horizon));                      // same course, no turn
+      plain += err(D.pathPoint(s.lat, s.lon, s.raw, s.rawSpd, 0, horizon)); n++;             // a plain line along the last reported course
     }
-    assert.ok(n > 50);
-    assert.ok(a / n < 0.8 * (b / n), `+${horizon}s: turn-aware ${(a / n).toFixed(1)} m vs straight ${(b / n).toFixed(1)} m`);
+    assert.ok(n > 50); res[horizon] = { a: a / n, same: same / n, plain: plain / n };
   }
+  const t = (h) => `+${h}s: drawn ${res[h].a.toFixed(1)} m, same course straight ${res[h].same.toFixed(1)} m, plain last-course line ${res[h].plain.toFixed(1)} m`;
+  assert.ok(res[3].a < 0.9 * res[3].same, t(3)); assert.ok(res[3].a < 0.85 * res[3].plain, t(3));
+  assert.ok(res[5].a <= res[5].same, t(5)); assert.ok(res[5].a < 0.95 * res[5].plain, t(5));
 });
 
 test('when reports stop, the icon coasts a little then holds still instead of running away', () => {
@@ -111,4 +114,34 @@ test('predictPath: straight line, circle geometry, direction of turn and the one
   [e, n] = k(end); assert.ok(Math.hypot(e, n) < 0.5, 'back where it started');
   assert.equal(pr.pts.length, 37); assert.ok(Math.abs(pr.radius - r) < 0.01);
   assert.equal(D.predictPath(lat, lon, 45, 15, 0, 20).maxT, 20);
+});
+
+test('path slider: any step from 0 to 60 s, remembered, shown as text, and bad stored values fall back safely', () => {
+  const { D, el } = loadDashboard(), set = (v) => { el('prd').value = String(v); el('prd').oninput(); };
+  assert.equal(D.getPredT(), 15, 'default');
+  set(40); assert.equal(D.getPredT(), 40); assert.equal(el('prdv').textContent, '40 s');
+  set(0); assert.equal(D.getPredT(), 0); assert.equal(el('prdv').textContent, 'Off');
+  set(60); assert.equal(D.getPredT(), 60);
+  set(33); assert.equal(D.getPredT(), 35, 'snaps to 5 s steps'); set(500); assert.equal(D.getPredT(), 60, 'never beyond 60 s'); set(-9); assert.equal(D.getPredT(), 0);
+  const store = {}; const a = loadDashboard({ storage: store }); a.el('prd').value = '25'; a.el('prd').oninput(); assert.equal(store.predT, '25', 'saved');
+  assert.equal(loadDashboard({ storage: store }).D.getPredT(), 25, 'and restored on the next visit');
+  for (const [raw, want] of [['40', 40], ['0', 0], ['12', 10], ['7000', 15], ['-5', 15], ['abc', 15], ['', 15]]) assert.equal(loadDashboard({ storage: { predT: raw } }).D.getPredT(), want, `stored "${raw}"`);
+  assert.equal(loadDashboard({ storage: { predT: '30' } }).el('prd').value, 30, 'the slider shows the restored value');
+});
+
+test('the path direction follows the real course closely and without pulsing at each 2 Hz report', () => {
+  const h = loadDashboard(), D = h.D, sim = createSim(['full']), crs = [], truth = []; h.run(sim, 25);
+  h.run(sim, 90, { onFrame: () => { if (D.Z.crs != null) { crs.push(D.Z.crs); truth.push(sim.state.course * 57.2958); } } });
+  const w = (a) => ((a % 360) + 540) % 360 - 180; let e = 0, j = 0;
+  for (let i = 2; i < crs.length; i++) { e += w(crs[i] - truth[i]) ** 2; j += ((crs[i] - 2 * crs[i - 1] + crs[i - 2]) * 3600) ** 2; }
+  const err = Math.sqrt(e / crs.length), jerk = Math.sqrt(j / crs.length);
+  assert.ok(err < 4.5, `course error ${err.toFixed(2)} deg RMS (it was 6.2 when filtered from velocity)`);
+  assert.ok(jerk < 9, `angular jerk ${jerk.toFixed(1)} deg/s^2 RMS (it was 12 when it pulsed at each report)`);
+});
+
+test('a position report never makes the turn rate of the course jump', () => {
+  const h = loadDashboard(), D = h.D, sim = createSim(['full']); h.run(sim, 25);
+  let prevC = null, prevR = null, worst = 0;
+  h.run(sim, 90, { onFrame: () => { if (D.Z.crs == null) return; if (prevC != null) { const r = (D.Z.crs - prevC) * 60; if (prevR != null) worst = Math.max(worst, Math.abs(r - prevR)); prevR = r; } prevC = D.Z.crs; } });
+  assert.ok(worst < 6, `largest one-frame change in the course's turn rate ${worst.toFixed(2)} deg/s`);
 });

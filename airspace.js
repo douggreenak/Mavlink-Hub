@@ -104,11 +104,11 @@ const LAYERS = {
       arc('Part_Time_National_Security_UAS_Flight_Restrictions', 'nsuas', 'Facility,Base,Reason,Airspace,Floor,Ceiling')]
   },
   tfr: { cell: 2, ttl: 10 * 60e3, maxSpan: 6, sources: [{ type: 'wfs', source: 'tfr' }] },
-  uasfm: { cell: 0.1, ttl: 14 * DAY, maxSpan: 0.6, sources: [arc('FAA_UAS_FacilityMap_Data', 'uasfm', 'CEILING,APT1_NAME', { offset: 0.00015 })] },
+  uasfm: { cell: 0.1, ttl: 14 * DAY, maxSpan: 0.7, sources: [arc('FAA_UAS_FacilityMap_Data', 'uasfm', 'CEILING,APT1_NAME', { offset: 0.00015 })] },
   sites: { cell: 2, ttl: 30 * DAY, maxSpan: 6, sources: [arc('Recreational_Flyer_Fixed_Sites', 'sites', 'SITE_NAME,CEILING,UNIT,POC')] },
 };
 const LAYER_IDS = [...Object.keys(LAYERS), 'local'];
-const MAX_CELLS = 36, PAGE = 2000, MAX_PAGES = 5;
+const MAX_CELLS = 48, PAGE = 2000, MAX_PAGES = 5;
 
 // Grid cells (of `size` degrees) covering a bounding box, as {ix, iy, w, s, e, n}.
 function cellsFor(box, size) {
@@ -121,7 +121,8 @@ function cellsFor(box, size) {
 
 function createAirspace({ dir, fetchJSON, now = Date.now, faaBase = FAA, tfrBase = TFR_WFS, maxFloorFt = 400, remote = true, concurrency = 4, failBackoffMs = 60e3 }) {
   const inflight = new Map(), failed = new Map();
-  const cacheFile = (layer, c) => path.join(dir, 'cache', layer, `${c.ix}_${c.iy}.json`);
+  // One file per layer, cell and source: a layer built from several FAA services keeps what did arrive when one fails.
+  const cacheFile = (layer, c, i = 0) => path.join(dir, 'cache', layer, `${c.ix}_${c.iy}${LAYERS[layer].sources.length > 1 ? '_' + i : ''}.json`);
   const readCache = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return null; } };
   function writeCache(f, o) { fs.mkdirSync(path.dirname(f), { recursive: true }); const t = f + '.tmp'; fs.writeFileSync(t, JSON.stringify(o)); fs.renameSync(t, f); }
 
@@ -142,9 +143,18 @@ function createAirspace({ dir, fetchJSON, now = Date.now, faaBase = FAA, tfrBase
     }
     return feats.map((f) => normalizeFeature(src.source, f, { maxFloorFt })).filter(Boolean);
   }
-  // One grid cell of one layer: fresh cache, else fetch, else stale cache, else an error.
+  // One grid cell of one layer: every source separately, then merged. The oldest data sets the reported age.
   async function getCell(layer, c) {
-    const def = LAYERS[layer], f = cacheFile(layer, c), cached = readCache(f), t = now();
+    const res = await Promise.all(LAYERS[layer].sources.map((_, i) => getSourceCell(layer, i, c)));
+    const ages = res.map((r) => r.fetched).filter((x) => x != null), err = res.map((r) => r.error).find(Boolean);
+    const out = { features: res.flatMap((r) => r.features), fetched: ages.length ? Math.min(...ages) : null };
+    if (res.some((r) => r.stale)) out.stale = true;
+    if (err) out.error = err;
+    return out;
+  }
+  // One source in one cell: fresh cache, else fetch (and save), else stale cache, else an error.
+  async function getSourceCell(layer, i, c) {
+    const def = LAYERS[layer], f = cacheFile(layer, c, i), cached = readCache(f), t = now();
     if (cached && t - cached.fetched < def.ttl) return { features: cached.features, fetched: cached.fetched };
     const k = f; if (inflight.has(k)) return inflight.get(k);
     const p = (async () => {
@@ -152,7 +162,7 @@ function createAirspace({ dir, fetchJSON, now = Date.now, faaBase = FAA, tfrBase
       if (!remote) return cached ? { features: cached.features, fetched: cached.fetched, stale: true } : { features: [], fetched: null, error: 'Airspace download is switched off (AIRSPACE=off) and nothing is saved for this area.' };
       if (lastFail && t - lastFail.at < failBackoffMs) return cached ? { features: cached.features, fetched: cached.fetched, stale: true, error: lastFail.msg } : { features: [], fetched: null, error: lastFail.msg };
       try {
-        const feats = []; for (const src of def.sources) feats.push(...await fetchSource(src, c));
+        const feats = await fetchSource(def.sources[i], c);
         const o = { fetched: t, features: feats }; try { writeCache(f, o); } catch (e) { /* a read-only disk should not break the map */ }
         failed.delete(k); return { features: feats, fetched: t };
       } catch (e) {

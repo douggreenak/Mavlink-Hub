@@ -12,14 +12,14 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'hub-air-'));
 const FAIRBANKS = { w: -148.2, e: -147.2, s: 64.5, n: 65.1 };
 
 // ---------- a fake FAA ----------
-let srv, base, hits, mode, T;
+let srv, base, hits, mode, T, failSvc;
 const SERVICES = { Class_Airspace: 'faa-class.json', Special_Use_Airspace: 'faa-sua.json', FAA_UAS_FacilityMap_Data: 'faa-uasfm.json', Recreational_Flyer_Fixed_Sites: 'faa-sites.json', National_Defense_Airspace_TFR_Areas: null, Part_Time_National_Security_UAS_Flight_Restrictions: null };
 before(async () => {
   srv = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x'), svc = (u.pathname.match(/arcgis\/([^/]+)\/FeatureServer/) || [])[1] || (u.pathname === '/tfr' ? 'TFR' : '?');
     hits[svc] = (hits[svc] || 0) + 1; hits._urls.push(req.url);
     const json = (o, code = 200) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
-    if (mode === 'down') { res.writeHead(503); return res.end('unavailable'); }
+    if (mode === 'down' || failSvc === svc) { res.writeHead(503); return res.end('unavailable'); }
     if (mode === 'errbody') return json({ error: { code: 400, message: 'Invalid query parameters' } });
     if (svc === 'TFR') return json(fx('tfr-wfs.json'));
     if (!(svc in SERVICES)) return json({ error: { message: 'no such service' } });
@@ -32,7 +32,7 @@ before(async () => {
   await new Promise((r) => srv.listen(0, '127.0.0.1', r)); base = `http://127.0.0.1:${srv.address().port}`;
 });
 after(() => srv.close());
-const reset = () => { hits = { _urls: [] }; mode = 'ok'; T = 1.8e12; };
+const reset = () => { hits = { _urls: [] }; mode = 'ok'; T = 1.8e12; failSvc = null; };
 const get = (u) => new Promise((resolve, reject) => http.get(u, (r) => { const c = []; r.on('data', (d) => c.push(d)); r.on('end', () => (r.statusCode === 200 ? resolve(Buffer.concat(c)) : reject(new Error('HTTP ' + r.statusCode)))); }).on('error', reject));
 const make = (o = {}) => A.createAirspace({ dir: o.dir || tmp(), fetchJSON: (u) => get(u).then((b) => JSON.parse(b)), now: () => T, faaBase: base + '/arcgis', tfrBase: base + '/tfr', ...o });
 
@@ -201,27 +201,101 @@ test('point in polygon: holes, multipolygons, edges of the world', () => {
 
 const feat = (kind, name, w, s, e, n, extra = {}) => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }, properties: { key: name, kind, name, floorFt: 0, ceilFt: 2900, bb: [w, s, e, n], ...extra } });
 
-test('what is the aircraft inside? low floors only; the worst severity wins; sites and MOAs never warn', () => {
-  const { D } = loadDashboard();
-  const data = { controlled: [feat('class-d', 'Class D', -147.80, 64.80, -147.70, 64.90), feat('class-e', 'High shelf', -147.80, 64.80, -147.70, 64.90, { floorFt: 700 })],
-    special: [feat('restricted', 'R-1', -147.76, 64.84, -147.72, 64.88), feat('moa', 'MOA', -148, 64, -147, 65)], sites: [feat('site', 'Club', -147.78, 64.82, -147.74, 64.86)],
-    uasfm: [feat('uasfm', 'Grid 0', -147.79, 64.81, -147.71, 64.89, { ceilingFt: 0 }), feat('uasfm', 'Grid 400', -147.79, 64.81, -147.71, 64.89, { ceilingFt: 400 })] };
-  const here = [...D.asAt(64.855, -147.745, data).map((f) => f.properties.name)].sort();
-  assert.deepEqual(here, ['Class D', 'Club', 'Grid 0', 'Grid 400', 'MOA', 'R-1'], 'the 700 ft shelf is above 400 ft and ignored');
-  assert.deepEqual([D.asSev(data.special[0].properties), D.asSev(data.controlled[0].properties), D.asSev(data.special[1].properties), D.asSev(data.sites[0].properties), D.asSev(data.uasfm[0].properties), D.asSev(data.uasfm[1].properties)], [3, 2, 0, 0, 2, 0]);
-  assert.equal(D.asAt(64.5, -147.5, data).length, 1, 'only the MOA there');
-  assert.equal(D.asAt(10, 10, data).length, 0);
+test('drone-ceiling labels: one number per cell in view, only when cells are big enough, capped', () => {
+  const { D } = loadDashboard(), cell = (i, c) => feat('uasfm', 'G' + i, -147.8 + i * 0.01, 64.8, -147.79 + i * 0.01, 64.81, { ceilingFt: c });
+  const feats = [cell(0, 0), cell(1, 100), cell(2, 400), feat('class-d', 'D', -147.9, 64.7, -147.7, 64.9)];
+  const view = { w: -147.805, e: -147.775, s: 64.79, n: 64.82 };
+  const got = [...D.ceilLabels(feats, view, 40)].map((l) => l.text);
+  assert.deepEqual(got, ['0', '100'], 'the third cell is outside the view; other kinds get no label');
+  assert.equal(D.ceilLabels(feats, view, 12).length, 0, 'cells too small to read on screen: no labels');
+  const many = Array.from({ length: 1200 }, (_, i) => cell(0, i)); assert.equal(D.ceilLabels(many, view, 40).length, 800);
+  assert.ok(Math.abs(D.ceilLabels(feats, view, 40)[0].lat - 64.805) < 1e-9);
 });
 
-test('path warnings: first new area on the way, with the time; areas already inside do not repeat', () => {
-  const { D } = loadDashboard(), lat = 64.85, lon = -147.80, dLon = (m) => m / (111320 * Math.cos(lat * Math.PI / 180));
-  const R = feat('restricted', 'R-1', lon + dLon(300), 64.80, lon + dLon(500), 64.90);
-  const data = { special: [R, feat('moa', 'MOA', lon - 1, 64, lon + 1, 65), feat('class-d', 'Inside D', lon - dLon(100), 64.80, lon + dLon(100), 64.90)] };
-  const pr = D.predictPath(lat, lon, 90, 20, 0, 30), hit = D.asPathHit(pr, data);
-  assert.equal(hit.f.properties.name, 'R-1'); assert.equal(hit.s, 3);
-  assert.ok(hit.t > 14 && hit.t < 16.5, `300 m at 20 m/s is 15 s, said ${hit.t.toFixed(1)}`);
-  assert.equal(D.asPathHit(D.predictPath(lat, lon, 270, 20, 0, 30), data), null, 'flying away');
-  assert.equal(D.asPathHit(D.predictPath(lat, lon, 90, 20, 0, 10), data), null, 'too short to reach it');
-  const turning = D.asPathHit(D.predictPath(lat, lon, 90, 20, 15, 30), data);
-  assert.equal(turning, null, 'a right-hand turn curls away from it');
+const cellAround = (kind, c, extra = {}) => feat(kind, kind + c, -148, 64, -147, 65, { ceilingFt: c, ceilFt: c, ...extra });
+
+test('altitude limit: the drone ceiling grid, overridden by a flying site; unknown outside any data', () => {
+  const { D } = loadDashboard();
+  assert.equal(D.altLimit(64.5, -147.5, { uasfm: [], sites: [] }), null, 'no data means no limit, not zero');
+  assert.equal(D.altLimit(64.5, -147.5, { uasfm: [cellAround('uasfm', 200), cellAround('uasfm', 100)] }).ft, 100, 'overlapping cells: the lower ceiling');
+  assert.equal(D.altLimit(10, 10, { uasfm: [cellAround('uasfm', 200)] }), null, 'outside every cell');
+  const inSite = D.altLimit(64.5, -147.5, { uasfm: [cellAround('uasfm', 0)], sites: [feat('site', 'Club', -147.6, 64.4, -147.4, 64.6, { ceilFt: 400 })] });
+  assert.equal(inSite.ft, 400); assert.equal(inSite.src, 'flying site');
+  assert.equal(D.altLimit(64.9, -147.1, { uasfm: [cellAround('uasfm', 0)], sites: [feat('site', 'Club', -147.6, 64.4, -147.4, 64.6, { ceilFt: 400 })] }).ft, 0, 'outside the site the grid applies');
+});
+
+test('over-limit has a 5 ft margin to turn on and none to turn off, so it does not flicker on the edge', () => {
+  const { D } = loadDashboard();
+  D.ALT.over = false;
+  assert.equal(D.altOver(200, 200), false); assert.equal(D.altOver(204, 200), false); assert.equal(D.altOver(206, 200), true);
+  assert.equal(D.altOver(202, 200), true, 'stays red until back at the limit');
+  assert.equal(D.altOver(200, 200), false); assert.equal(D.altOver(203, 200), false);
+});
+
+test('the Altitude tile turns red only above the ceiling, shows the limit, and goes back when below or when the limit is unknown', () => {
+  const { loadDashboard: ld } = require('./helpers/dashboard.js'), { createSim } = require('../sim/inav-sim.js'), { tileMap } = require('./helpers/dashboard.js');
+  const h = ld(), D = h.D, sim = createSim(['full']); h.run(sim, 30, { fps: 30, ui: true });
+  const cls = () => (D.tiles().match(/class="tile hideable( over)?"[^>]*data-key="Altitude"/) || [])[1] || '';
+  assert.equal(cls(), '', 'no data, no red'); assert.ok(!/limit/.test(tileMap(D.tiles())['Altitude'].unit));
+  const set = (ft) => { D.LIM.data.uasfm = [cellAround('uasfm', ft)]; h.run(sim, 1, { fps: 30, ui: true }); };
+  set(1000); assert.equal(cls(), ''); assert.match(tileMap(D.tiles())['Altitude'].unit, /limit 305 m/);
+  set(50); assert.equal(cls(), ' over', 'about 80 m up is far above a 50 ft ceiling'); assert.match(tileMap(D.tiles())['Altitude'].unit, /limit 15 m/);
+  set(1000); assert.equal(cls(), '', 'back to normal');
+  D.LIM.data.uasfm = []; h.run(sim, 1, { fps: 30, ui: true }); assert.equal(cls(), '');
+});
+
+test('the drone-ceiling layer accepts a view up to 0.7 degrees wide, including a typical half-degree view at 65 N', async () => {
+  reset(); const r = await make().query(['uasfm'], { w: -148.0, e: -147.4, s: 64.7, n: 64.95 });
+  assert.equal(r.layers.uasfm.skipped, null); assert.ok(r.layers.uasfm.features.length > 0);
+});
+
+test('a layer built from several FAA services keeps what arrived when one fails, and does not download it again', async () => {
+  reset(); const dir = tmp(), air = make({ dir }), box = { w: -147.95, e: -147.4, s: 64.7, n: 65.0 };
+  failSvc = 'National_Defense_Airspace_TFR_Areas';
+  const first = await air.query(['special'], box);
+  assert.deepEqual(first.layers.special.features.map((f) => f.properties.kind).sort(), ['prohibited', 'restricted'], 'the services that worked still show');
+  assert.match(first.layers.special.errors[0], /Could not reach the FAA/);
+  const sua = hits.Special_Use_Airspace, nsuas = hits.Part_Time_National_Security_UAS_Flight_Restrictions, nda = hits.National_Defense_Airspace_TFR_Areas;
+  failSvc = null; T += 61e3;
+  const second = await air.query(['special'], box);
+  assert.deepEqual(second.layers.special.errors, []); assert.equal(second.layers.special.features.length, 2);
+  assert.equal(hits.Special_Use_Airspace, sua, 'already saved: not downloaded again');
+  assert.equal(hits.Part_Time_National_Security_UAS_Flight_Restrictions, nsuas, 'already saved: not downloaded again');
+  assert.ok(hits.National_Defense_Airspace_TFR_Areas > nda, 'only the one that failed was fetched');
+  const reopened = make({ dir }); await reopened.query(['special'], box);
+  assert.equal(hits.Special_Use_Airspace, sua, 'and it all survives a restart');
+});
+
+test('everything fetched is saved once: panning around and looking again never re-downloads an area', async () => {
+  reset(); const air = make();
+  await air.query(['controlled', 'sites', 'special'], FAIRBANKS); const n = hits._urls.length;
+  for (const b of [FAIRBANKS, { w: -148.1, e: -147.9, s: 64.6, n: 64.8 }, { w: -147.6, e: -147.3, s: 64.9, n: 65.05 }]) await air.query(['controlled', 'sites', 'special'], b);
+  assert.equal(hits._urls.length, n, 'no further requests to the FAA');
+});
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+test('loading spinner: only appears if loading lasts, stays while anything is loading, and hides when all is done', async () => {
+  const { D, el } = loadDashboard(), e = { style: { display: 'none' } }; D.setBusyEl(e);
+  D.busy(1); D.busy(-1); await sleep(380); assert.equal(e.style.display, 'none', 'a quick load never flashes it');
+  D.busy(1); assert.equal(e.style.display, 'none', 'not at once'); await sleep(380); assert.equal(e.style.display, 'block', 'shown after a moment');
+  assert.equal(el('asb').classList.contains('loading'), true, 'and as a ring inside the Airspace button, which is always in view');
+  D.busy(1); D.busy(-1); assert.equal(e.style.display, 'block', 'still one thing loading');
+  D.busy(-1); assert.equal(e.style.display, 'none'); assert.equal(D.busyCount(), 0); assert.equal(el('asb').classList.contains('loading'), false);
+  D.busy(-1); assert.equal(D.busyCount(), 0, 'never goes negative');
+});
+
+test('loading spinner follows a tile layer, and a layer removed mid-load does not leave it spinning', async () => {
+  const { D } = loadDashboard(), e = { style: { display: 'none' } }; D.setBusyEl(e);
+  const handlers = {}, layer = { on(ev, fn) { handlers[ev] = fn; return this; } };
+  assert.equal(D.trackBusy(layer), layer);
+  handlers.loading(); handlers.loading(); assert.equal(D.busyCount(), 1, 'repeated loading events count once');
+  handlers.load(); assert.equal(D.busyCount(), 0);
+  handlers.loading(); handlers.remove(); assert.equal(D.busyCount(), 0, 'removed while loading');
+  handlers.load(); assert.equal(D.busyCount(), 0, 'a late load event after removal does nothing');
+});
+
+test('the spinner works even before the map exists (the button ring shows, nothing breaks)', async () => {
+  const { D, el } = loadDashboard();
+  D.busy(1); await sleep(380); assert.equal(el('asb').classList.contains('loading'), true);
+  const e = { style: { display: 'none' } }; D.setBusyEl(e); D.busy(0); D.busy(-1); assert.equal(el('asb').classList.contains('loading'), false);
 });

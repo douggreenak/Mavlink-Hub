@@ -14,6 +14,23 @@ phone on the same network opens a live dashboard in the browser.
 
 New here? Jump to [Setting up a hub laptop](#setting-up-a-hub-laptop-windows).
 
+![The Flight tab in dark mode: attitude indicator, speed, altitude, battery and flight mode tiles. The Altitude tile is a soft red because the aircraft is above the drone ceiling for where it is.](docs/screenshots/flight-dark.jpg)
+
+*The Flight tab, fed by the built-in test flight. The red Altitude tile means the aircraft is above the FAA drone ceiling for that spot, and the tile says what the limit is.*
+
+## A quick look
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/map-path.jpg" alt="The Map tab with the aircraft, its track, and a dashed predicted path with ticks every 10 seconds"><br><sub><b>Map and predicted path.</b> A smooth dashed line shows where the current turn leads, with a tick every 10 seconds.</sub></td>
+<td width="50%"><img src="docs/screenshots/map-ceilings.jpg" alt="The map with the FAA drone ceiling grid, each cell labelled with its ceiling in feet"><br><sub><b>Drone ceilings.</b> The FAA grid with each cell's ceiling in feet, tinted by height.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/nosensors-flight.jpg" alt="The Flight tab for an aircraft with no GPS, airspeed or battery sensing: those tiles show a dash and say why"><br><sub><b>Missing sensors are shown honestly.</b> No GPS, airspeed or battery sensing: dashes with the reason, not zeros.</sub></td>
+<td width="50%"><img src="docs/screenshots/offline-frame.jpg" alt="The Offline tab: a blue frame over the map marks the area to save"><br><sub><b>Offline maps.</b> Frame an area, choose the detail, download it once.</sub></td>
+</tr>
+</table>
+
 ## Setting up a hub laptop (Windows)
 
 The hub laptop is the one computer that receives the telemetry. Everyone else just opens a
@@ -183,15 +200,41 @@ bulk-download from (your own, or a paid provider) and then lift the limit.
 
 ## Dashboard
 
+<img src="docs/screenshots/flight-light.jpg" alt="The Flight tab in light mode">
+
+*Light mode. The theme follows your device unless you pick one.*
+
+<img src="docs/screenshots/flight-details.jpg" alt="Battery cells, a Sensors card showing each sensor as OK, and flight statistics">
+
+*Further down the Flight tab: battery cells, the Sensors card, and flight statistics.*
+
 - **Flight**: attitude indicator, speed/altitude/battery tiles, per-cell voltages,
   flight statistics, RC channels. *Edit tiles* hides what you do not need; the choice
   is stored on the hub so every screen matches.
-- **Map**: live track with a follow mode and a street/satellite toggle, a predicted path, and optional airspace layers (below).
+- **Map**: live track with a follow mode and a street/satellite toggle, a predicted path, and airspace layers with ceiling numbers (below).
 - **Offline**: frame an area on the map, pick Overview, Standard or Detailed (each shows its
   size before you commit), and download it. Saved areas show in green. To free space, delete
   the tiles inside the frame at the chosen detail, or everything saved for a layer.
 - **All data**: every decoded MAVLink message and field, with rates.
 - **Demo mode** simulates a flight so you can try the dashboard without a plane.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/all-data.jpg" alt="The All data tab: every decoded MAVLink message with its rate and fields"><br><sub><b>All data.</b> Every decoded message, its rate, and every field.</sub></td>
+<td width="50%"><img src="docs/screenshots/connection.jpg" alt="The connection panel showing signal strength, telemetry rate, data age and packet loss"><br><sub><b>Connection.</b> Click the signal bars: signal, rate, data age, and packet loss counted from message numbers.</sub></td>
+</tr>
+</table>
+
+### On a phone
+
+The same page works on a phone, with the tabs along the bottom.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/mobile-flight.jpg" alt="The Flight tab on a phone"></td>
+<td width="50%"><img src="docs/screenshots/mobile-map.jpg" alt="The Map tab on a phone, with the predicted path"></td>
+</tr>
+</table>
 
 Decoded messages: HEARTBEAT, SYS_STATUS, SYSTEM_TIME, GPS_RAW_INT, SCALED_PRESSURE,
 ATTITUDE, GLOBAL_POSITION_INT, RC_CHANNELS, VFR_HUD, RADIO_STATUS, BATTERY_STATUS and
@@ -199,24 +242,42 @@ STATUSTEXT, in MAVLink v1 or v2 (signed frames included). Anything else is count
 under *Unrecognised messages*. To add a message, append a row to the `D` table near the
 top of the script in `index.html` with its id, name, `CRC_EXTRA` and fields in wire order.
 
+### Saving a map area
+
+<img src="docs/screenshots/offline-download.jpg" alt="The detail choices Overview, Standard and Detailed, each showing its size, with Download and Delete buttons, and the list of what is saved">
+
+*Each choice shows its size before you commit. What is saved is listed below, and you can delete an area or a whole layer.*
+
 ## Predicted path
 
+<img src="docs/screenshots/map-path.jpg" alt="The map with the predicted path">
+
+*Path length is set with the slider next to the Map controls.*
+
 The Map tab draws a dashed line ahead of the aircraft showing where it ends up if it holds its current turn,
-with a tick every 10 seconds. **Path** cycles it between off, 15, 30 and 60 seconds. It starts under the icon,
+with a tick every 10 seconds. The **Path** slider sets how far ahead it looks, from off to 60 seconds in 5-second steps; your setting is remembered. It starts under the icon,
 follows the direction of travel (not where the nose points, so wind is allowed for), and stops after one full circle.
 
 The turn rate comes from how the direction of travel is changing and, on fixed wings, from the bank angle as well.
 INAV's own yaw-rate field is not used, because INAV fills it with gyro degrees per second although MAVLink says
 radians per second. The line is hidden when there is no GPS fix or the data is stale, so it never invents a path.
 
-Honest limits: a constant-turn prediction is good for the next few seconds and for orbits. Measured against the
-test flight, it was about 40% closer than a straight line at 3 s and 30% closer at 5 s, but no better than a
-straight line at 10 s, because pilots roll out of turns. Treat the longer lengths as "where this turn leads", not a forecast.
+Honest limits: a constant-turn prediction helps most over the next few seconds and in orbits. Measured against the test
+flight, the drawn path was about 20% closer to where the aircraft really went than a plain line along its last reported
+course at 3 s, and about 12% closer at 5 s. Beyond roughly 10 s it is no better than a straight line, because pilots roll
+out of turns. Treat the longer lengths as "where this turn leads", not a forecast.
+
+The direction of the path is turned at the measured turn rate between position reports and corrected gently when each
+report arrives, so it neither lags in a tight turn nor jumps at every report.
 
 Motion is smooth because the icon is dead-reckoned from each position report and corrections are faded in over
 a fraction of a second. INAV's default is only two reports a second over the radio, which is why other tools look jerky.
 
 ## Airspace
+
+<img src="docs/screenshots/map-airspace-panel.jpg" alt="The Airspace panel with layer checkboxes, a legend, and the data status, above the map">
+
+*The Airspace panel: choose layers, see the legend, and see how fresh each layer is.*
 
 Switch **Airspace** on in the Map tab. The hub fetches public FAA data for the area in view, saves it on disk
 (so it keeps working offline once you have looked at an area) and the dashboard draws it:
@@ -230,9 +291,9 @@ Switch **Airspace** on in the Map tab. The hub fetches public FAA data for the a
 | Drone ceilings | The FAA drone ceiling grid (LAANC), only when zoomed in |
 | My own files | Your own GeoJSON files (below) |
 
-Click any shape for its name, floor and ceiling. A banner on the map warns when the aircraft is **inside** an area
-that matters, or when its predicted path **will enter** one, with the time. Only airspace starting at ground level
-up to 400 ft is considered (change with `AIRSPACE_MAX_FLOOR_FT`); Class A is never shown.
+A small ring spins inside the **Airspace** button and in the map's top-right corner while map tiles or airspace data are still loading, and if the data can't be loaded the button turns amber and says why, in the Airspace panel and on the map. Everything the hub fetches is saved on disk in the `airspace` folder, separately for each area and each FAA service, so an area is downloaded once and then reused (and survives restarts). It is refreshed after two weeks, TFRs every 10 minutes, and if the FAA is unreachable the saved copy is used and marked as such.
+
+Click any shape for its name, floor and ceiling. The drone-ceiling grid shows each cell's ceiling in feet as a number once you are zoomed in far enough to read it, and the **Altitude** tile on the main page turns red when the aircraft is above the ceiling for where it is. Only airspace starting at ground level up to 400 ft is considered (change with `AIRSPACE_MAX_FLOOR_FT`); Class A is never shown.
 
 **This is advisory only.** The data can be out of date or incomplete, TFR altitudes and times are in the NOTAM, and
 the FAA's own tools (B4UFLY, NOTAMs) and your own checks are what count. Coverage is the United States. For other
@@ -242,6 +303,14 @@ a circle. Optional properties: `name`, `kind` (`restricted`, `prohibited`, `warn
 drawn as "your own area"), `floor`, `ceiling` (feet) and `note`. `AIRSPACE=off` stops the hub fetching anything.
 
 ## INAV over ELRS
+
+<img src="docs/screenshots/nosensors-details.jpg" alt="No battery data, and a Sensors card showing Airspace, GPS, Battery voltage and Current as not fitted">
+
+*A bare-bones plane: the Sensors card shows what is fitted, and nothing pretends to be measured when it is not.*
+
+<img src="docs/screenshots/nosensors-map.jpg" alt="The Map tab for an aircraft with no GPS, explaining that it is not reporting a position">
+
+*With no GPS the map says so and says what to check, rather than waiting forever.*
 
 The dashboard is built around what INAV actually sends, taken from INAV's own MAVLink source:
 
