@@ -1,0 +1,6 @@
+# Created at runtime next to server.js (or in DATA_DIR)
+cache/
+settings.json
+
+node_modules/
+.DS_Store

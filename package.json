@@ -1,0 +1,14 @@
+{
+  "name": "mavlink-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Receive-only MAVLink telemetry hub: relays an ELRS Backpack UDP feed to a browser dashboard and caches map tiles for offline use.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=18.2"
+  }
+}

@@ -4,28 +4,34 @@
 //
 // Optional environment variables:
 //   UDP_PORT (14550)   WEB_PORT (8080)   MAX_TILES (500 tiles per download)
+//   DATA_DIR            - where cache/ and settings.json live (default: next to this file)
 //   TILE_STREET_URL / TILE_SAT_URL  - your own tile source, e.g. https://example.com/{z}/{x}/{y}.png
 const dgram = require('dgram'), http = require('http'), https = require('https'), fs = require('fs');
 const os = require('os'), path = require('path');
 const UDP_PORT = +process.env.UDP_PORT || 14550;
 const WEB_PORT = +process.env.WEB_PORT || 8080;
 const MAX_TILES = +process.env.MAX_TILES || 500;
-const CACHE = path.join(__dirname, 'cache');
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const CACHE = path.join(DATA_DIR, 'cache');
+const PRECACHE_MAX_ZOOM = 17;   // finest level a bulk download may ask for
+const TILE_MAX_ZOOM = 19;       // finest level the map views may request one tile at a time
+const DOWNLOAD_TIMEOUT = 15000; // ms before an unanswered tile request is abandoned
 const viewers = new Set();
 
 // Settings shared by every connected laptop (units + hidden tiles), saved next to this file.
-const SETTINGS_FILE = path.join(__dirname, 'settings.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 let settings = { units: 'metric', hidden: [] };
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) }; } catch (e) {}
 const settingsEvent = () => `event: settings\ndata: ${JSON.stringify(settings)}\n\n`;
 
-const udp = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-udp.on('message', (msg) => {
-  const line = `data: ${msg.toString('base64')}\n\n`;
-  for (const v of viewers) v.write(line);
-});
-udp.on('error', (e) => { console.error('UDP error:', e.message); process.exit(1); });
-udp.bind(UDP_PORT, () => console.log(`Node ${process.version} - listening for MAVLink on UDP ${UDP_PORT}`));
+// Send one SSE chunk to every dashboard. A viewer that has stopped reading (sleeping laptop,
+// dead Wi-Fi) is dropped once a megabyte piles up; its browser reconnects on its own.
+function broadcast(line) {
+  for (const v of viewers) {
+    if (v.writableLength > 1e6) { viewers.delete(v); v.destroy(); continue; }
+    v.write(line);
+  }
+}
 
 const fill = (tpl, z, x, y) => tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y);
 const TILES = {
@@ -39,13 +45,15 @@ const tileFile = (l, z, x, y) => path.join(CACHE, 'tiles', l, String(z), String(
 function download(url, hops = 0) {
   return new Promise((resolve, reject) => {
     const lib = url.startsWith('http:') ? http : https;
-    lib.get(url, { headers: { 'User-Agent': 'MAVLinkHub/1.0 (personal telemetry dashboard)' } }, (r) => {
+    const req = lib.get(url, { headers: { 'User-Agent': 'MAVLinkHub/1.0 (personal telemetry dashboard)' }, timeout: DOWNLOAD_TIMEOUT }, (r) => {
       if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && hops < 3) {
         r.resume(); return resolve(download(new URL(r.headers.location, url).href, hops + 1));
       }
       if (r.statusCode !== 200) { r.resume(); return reject(new Error('HTTP ' + r.statusCode)); }
       const chunks = []; r.on('data', (c) => chunks.push(c)); r.on('end', () => resolve(Buffer.concat(chunks)));
-    }).on('error', reject);
+    });
+    req.on('timeout', () => req.destroy(new Error('timed out after ' + DOWNLOAD_TIMEOUT / 1000 + ' s')));
+    req.on('error', reject);
   });
 }
 let warned = 0;
@@ -84,8 +92,9 @@ function listOf(rs) {
 }
 function parsePlan(qs) {
   const q = new URLSearchParams(qs), l = q.get('layer');
-  const a = { w: +q.get('w'), e: +q.get('e'), s: +q.get('s'), n: +q.get('n') };
-  const z0 = Math.max(0, Math.floor(+q.get('z0'))), z1 = Math.min(17, Math.floor(+q.get('z1')));
+  const num = (k) => (q.get(k) || '').trim() === '' ? NaN : +q.get(k);   // a missing field is an error, not 0
+  const a = { w: num('w'), e: num('e'), s: num('s'), n: num('n') };
+  const z0 = Math.max(0, Math.floor(num('z0'))), z1 = Math.min(PRECACHE_MAX_ZOOM, Math.floor(num('z1')));
   if (!TILES[l] || Object.values(a).some(isNaN) || isNaN(z0) || isNaN(z1) || z0 > z1) return { error: 'Bad request' };
   const b = { w: Math.min(a.w, a.e), e: Math.max(a.w, a.e), s: Math.max(-85, Math.min(a.s, a.n)), n: Math.min(85, Math.max(a.s, a.n)) };
   return { l, rs: ranges(b, z0, z1) };
@@ -112,7 +121,7 @@ let job = { done: 0, total: 0, running: false, failed: 0, cancel: false };
 const json = (res, o) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-http.createServer((req, res) => {
+function handle(req, res) {
   let m;
   const [url, qs = ''] = req.url.split('?');
   if (url === '/stream') {
@@ -122,6 +131,7 @@ http.createServer((req, res) => {
     viewers.add(res);
     req.on('close', () => viewers.delete(res));
   } else if ((m = url.match(/^\/tiles\/(street|sat)\/(\d+)\/(\d+)\/(\d+)$/))) {
+    if (+m[2] > TILE_MAX_ZOOM) return res.writeHead(404).end();
     serveTile(m[1], m[2], m[3], m[4], res);
   } else if ((m = url.match(/^\/vendor\/(leaflet\.js|leaflet\.css|qrcode\.js|images\/[\w.-]+)$/))) {
     const f = path.join(__dirname, 'vendor', m[1]);
@@ -163,37 +173,78 @@ http.createServer((req, res) => {
     json(res, TILES[l] ? summary(l) : { error: 'Bad layer' });
   } else if (url === '/cache/coverage') {
     const q = new URLSearchParams(qs), l = q.get('layer'), z = Math.floor(+q.get('z'));
-    json(res, TILES[l] && z >= 0 && z <= 19 ? { z, tiles: coverage(l, z) } : { error: 'Bad request' });
+    json(res, TILES[l] && z >= 0 && z <= TILE_MAX_ZOOM ? { z, tiles: coverage(l, z) } : { error: 'Bad request' });
   } else if (url === '/info') {
-    // Addresses a phone on the same network can use; private ranges first.
-    const urls = [];
-    for (const list of Object.values(os.networkInterfaces()))
-      for (const a of list) if (a.family === 'IPv4' && !a.internal) urls.push(`http://${a.address}:${WEB_PORT}`);
-    const priv = (u) => /\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u) ? 0 : 1;
-    json(res, { urls: urls.sort((a, b) => priv(a) - priv(b)) });
+    json(res, { urls: addresses(req.socket.localPort) });
   } else if (url === '/settings' && req.method === 'GET') {
     json(res, settings);
   } else if (url === '/settings' && req.method === 'POST') {
-    let body = '';
-    req.on('data', (c) => { body += c; if (body.length > 20000) req.destroy(); });
+    let body = '', over = false;
+    req.on('data', (c) => {
+      body += c;
+      if (body.length > 20000 && !over) { over = true; res.writeHead(413, { Connection: 'close' }).end('Too large'); req.destroy(); }
+    });
     req.on('end', () => {
+      if (over) return;
       try {
         const o = JSON.parse(body);
         if (['metric', 'imperial'].includes(o.units)) settings.units = o.units;
         if (Array.isArray(o.hidden)) settings.hidden = o.hidden.filter((x) => typeof x === 'string' && x.length < 60).slice(0, 100);
         fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
-        for (const v of viewers) v.write(settingsEvent());
+        broadcast(settingsEvent());
         json(res, settings);
       } catch (e) { res.writeHead(400).end('Bad JSON'); }
     });
   } else if (url === '/' || url === '/index.html') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
     fs.createReadStream(path.join(__dirname, 'index.html')).pipe(res);
   } else {
     res.writeHead(404).end('Not found');
   }
-}).listen(WEB_PORT, '0.0.0.0', () => {
-  console.log('Open the dashboard from any laptop on the same network:');
+}
+
+// Addresses a phone on the same network can use; private ranges first.
+function addresses(port) {
+  const urls = [];
   for (const list of Object.values(os.networkInterfaces()))
-    for (const a of list) if (a.family === 'IPv4' && !a.internal) console.log(`  http://${a.address}:${WEB_PORT}`);
-});
+    for (const a of list) if (a.family === 'IPv4' && !a.internal) urls.push(`http://${a.address}:${port}`);
+  const priv = (u) => /\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u) ? 0 : 1;
+  return urls.sort((a, b) => priv(a) - priv(b));
+}
+
+// Bind the UDP listener and the web server. Resolves with both plus a close() for tests.
+function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0' } = {}) {
+  return new Promise((resolve, reject) => {
+    const udp = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    const web = http.createServer(handle);
+    udp.on('message', (msg) => broadcast(`data: ${msg.toString('base64')}\n\n`));
+    udp.once('error', reject);
+    web.once('error', reject);
+    udp.bind(udpPort, () => web.listen(webPort, host, () => {
+      udp.on('error', (e) => console.error('UDP error:', e.message));
+      web.on('error', (e) => console.error('Web error:', e.message));
+      resolve({
+        udp, web,
+        close: () => new Promise((done) => {
+          for (const v of viewers) v.destroy();
+          viewers.clear();
+          udp.close(() => { web.closeAllConnections(); web.close(() => done()); });
+        }),
+      });
+    }));
+  });
+}
+
+if (require.main === module) {
+  start().then(({ udp, web }) => {
+    console.log(`Node ${process.version} - listening for MAVLink on UDP ${udp.address().port}`);
+    console.log('Open the dashboard from any laptop on the same network:');
+    for (const u of addresses(web.address().port)) console.log('  ' + u);
+  }).catch((e) => {
+    if (e.code === 'EADDRINUSE') console.error(`Port ${e.port} is already in use. Is another copy of the hub (or a ground station) running?`);
+    else console.error('Could not start:', e.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { start, handle, parsePlan, ranges, countOf, listOf, fill, tileUrl, tileFile, download, addresses, TILES, MAX_TILES, CACHE, SETTINGS_FILE, PRECACHE_MAX_ZOOM, TILE_MAX_ZOOM };

@@ -168,7 +168,7 @@ function feed(u){
  for(let i=0;i<u.length;i++){
   const m=u[i];if(m!==0xfd&&m!==0xfe)continue;
   const v2=m===0xfd,len=u[i+1],hdr=v2?10:6,end=i+hdr+len+2+(v2&&(u[i+2]&1)?13:0);
-  if(end>u.length)continue;
+  if(!(end<=u.length))continue; // also catches a lone start byte at the very end (len would be undefined)
   const id=v2?u[i+7]|u[i+8]<<8|u[i+9]<<16:u[i+5],df=defs[id];
   if(df){
    if(crc(u.subarray(i+1,i+hdr+len),df.extra)!==(u[i+hdr+len]|u[i+hdr+len+1]<<8)){bad++;continue}
@@ -192,6 +192,7 @@ const F={'GPS_RAW_INT.lat':e7,'GPS_RAW_INT.lon':e7,'GPS_RAW_INT.alt':v=>(v/1000)
 'ATTITUDE.roll':deg,'ATTITUDE.pitch':deg,'ATTITUDE.yaw':deg,'ATTITUDE.rollspeed':deg,'ATTITUDE.pitchspeed':deg,'ATTITUDE.yawspeed':deg,
 'SCALED_PRESSURE.temperature':v=>(v/100).toFixed(1)+' °C','SCALED_PRESSURE.press_abs':v=>v.toFixed(2)+' hPa','SCALED_PRESSURE.press_diff':v=>v.toFixed(2)+' hPa'};
 const fv=(m,k,v)=>F[m+'.'+k]?F[m+'.'+k](v):typeof v==='number'&&!Number.isInteger(v)?v.toFixed(3):v;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function horizon(){
  const c=$('hor'),g=c.getContext('2d'),W=c.width,H=c.height,roll=Z.roll||0,pitch=Z.pitch||0,px=H/60;
@@ -248,7 +249,7 @@ function render(){
  }
  if(view==='map')mapUpdate();
  if(view==='all'){
-  let h=Object.entries(V).sort().map(([m,r])=>`<div class="card"><h3>${m}<span>${(r.n/Math.max(1,(Date.now()-r.t0)/1000)).toFixed(1)} Hz · ${((Date.now()-r.t)/1000).toFixed(1)} s ago</span></h3><dl>${Object.entries(r.f).map(([k,v])=>`<dt>${k}</dt><dd>${fv(m,k,v)}</dd>`).join('')}</dl></div>`).join('');
+  let h=Object.entries(V).sort().map(([m,r])=>`<div class="card"><h3>${m}<span>${(r.n/Math.max(1,(Date.now()-r.t0)/1000)).toFixed(1)} Hz · ${((Date.now()-r.t)/1000).toFixed(1)} s ago</span></h3><dl>${Object.entries(r.f).map(([k,v])=>`<dt>${k}</dt><dd>${esc(fv(m,k,v))}</dd>`).join('')}</dl></div>`).join('');
   const us=Object.entries(U);if(us.length)h+=`<div class="card"><h3>Unrecognised messages</h3><dl>${us.map(([id,q])=>`<dt>ID ${id} (${q.len} bytes)</dt><dd>${q.n} received</dd>`).join('')}</dl></div>`;
   h+=`<div class="card"><h3>Link health</h3><dl><dt>Decoded</dt><dd>${ok}</dd><dt>Failed CRC</dt><dd>${bad}</dd></dl></div>`;
   $('allbox').innerHTML=h;
