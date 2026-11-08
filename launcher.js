@@ -66,12 +66,12 @@ async function main() {
   const S = require('./server.js');                           // also reads hub.env into the environment
   const port = +process.env.WEB_PORT || 8080, url = `http://localhost:${port}/launcher`, dataDir = S.DATA_DIR;
   fs.mkdirSync(dataDir, { recursive: true });
-  if (await hubRunning(port)) { openWindow(url, dataDir); return 0; }
+  if (await hubRunning(port)) { openWindow(url, dataDir); console.log('HUB_PORT=' + port); return 0; }
   const logFile = path.join(dataDir, 'hub.log'), fd = fs.openSync(logFile, 'w');
   const child = spawn(process.execPath, [path.join(HERE, 'server.js')], { cwd: HERE, detached: true, stdio: ['ignore', fd, fd], windowsHide: true, env: { ...process.env, HUB_LOG: logFile } });
   let exited = false; child.on('exit', () => { exited = true; }); child.on('error', () => { exited = true; });
   for (let i = 0; i < 75; i++) {
-    if (await hubRunning(port, 600)) { child.unref(); openWindow(url, dataDir); return 0; }
+    if (await hubRunning(port, 600)) { child.unref(); openWindow(url, dataDir); console.log('HUB_PORT=' + port); return 0; }
     if (exited) break;
     await sleep(200);
   }

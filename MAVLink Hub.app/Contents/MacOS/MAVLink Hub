@@ -51,3 +51,15 @@ If you are using a Git checkout, keep MAVLink Hub.app in the same folder as serv
 fi
 
 OUT="$("$NODE" launcher.js 2>&1)" || { show "$OUT"; exit 1; }
+
+# Stay running while the hub does. macOS cleans up everything an app started once the app's own process ends, which would
+# stop the hub and the window a moment after they appeared. Quitting the hub from its window ends this too.
+# MAVLINK_HUB_NO_WAIT=1 skips the wait (used by the tests).
+[ -n "$MAVLINK_HUB_NO_WAIT" ] && exit 0
+PORT="$(printf '%s\n' "$OUT" | sed -n 's/^HUB_PORT=//p' | tail -1)"
+[ -z "$PORT" ] && exit 0
+MISSES=0
+while [ "$MISSES" -lt 3 ]; do
+  sleep 2
+  if /usr/bin/curl -s -m 2 -o /dev/null "http://127.0.0.1:$PORT/info"; then MISSES=0; else MISSES=$((MISSES + 1)); fi
+done

@@ -81,7 +81,7 @@ const fakeRuntime = (appDir, marker) => {            // stand-ins for the two bu
   for (const f of ['node-arm64', 'node-x64']) { const p = path.join(rt, f); fs.writeFileSync(p, `#!/bin/sh\necho "${f}" >> "${marker}"\nexec "${process.execPath}" "$@"\n`); fs.chmodSync(p, 0o755); }
 };
 const stopHub = (port) => new Promise((r) => { const q = http.request({ host: '127.0.0.1', port, path: '/launcher/stop', method: 'POST', headers: { 'X-Launcher': '1', 'Content-Type': 'application/json' } }, (res) => { res.resume(); res.on('end', r); }); q.on('error', r); q.end('{}'); });
-const runApp = (appDir, port, extra = {}) => spawnSync('/bin/bash', [path.join(appDir, 'Contents', 'MacOS', 'MAVLink Hub')], { env: { PATH: '/usr/bin:/bin', HOME: os.homedir(), LAUNCHER_NO_WINDOW: '1', MAVLINK_HUB_NO_DIALOG: '1', WEB_PORT: String(port), UDP_PORT: String(port + 3000), DATA_DIR: tmp(), AIRSPACE: 'off', ...extra }, encoding: 'utf8', timeout: 30000 });
+const runApp = (appDir, port, extra = {}) => spawnSync('/bin/bash', [path.join(appDir, 'Contents', 'MacOS', 'MAVLink Hub')], { env: { PATH: '/usr/bin:/bin', HOME: os.homedir(), LAUNCHER_NO_WINDOW: '1', MAVLINK_HUB_NO_DIALOG: '1', MAVLINK_HUB_NO_WAIT: '1', WEB_PORT: String(port), UDP_PORT: String(port + 3000), DATA_DIR: tmp(), AIRSPACE: 'off', ...extra }, encoding: 'utf8', timeout: 30000 });
 const macOnly = { skip: process.platform === 'win32' };
 const portFor = () => 27000 + Math.floor(Math.random() * 1500);
 
@@ -183,4 +183,20 @@ test('by default the data folder is the per-user app-data folder, never anywhere
   assert.ok(dir.startsWith(home), dir + ' should be under the home folder');
   assert.ok(!/\.app(\/|$)/.test(dir) && !dir.startsWith(ROOT), 'and not inside an app or this project folder');
   assert.match(dir, /MAVLink Hub|mavlink-hub/);
+});
+
+test('the Mac app stays running while the hub runs (macOS removes what an app started once the app ends) and ends with it', async () => {
+  const root = tmp(), appDir = path.join(root, 'app'); B.assemble({ platform: 'mac', outDir: appDir });
+  const port = 29500 + Math.floor(Math.random() * 400), data = path.join(root, 'd');
+  const nodeBin = path.join(root, 'bin'); fs.mkdirSync(nodeBin); fs.symlinkSync(process.execPath, path.join(nodeBin, 'node'));
+  const app = spawn('/bin/bash', [path.join(appDir, MAC_APP, 'Contents', 'MacOS', 'MAVLink Hub')], { env: { PATH: nodeBin + ':/usr/bin:/bin', HOME: os.homedir(), LAUNCHER_NO_WINDOW: '1', MAVLINK_HUB_NO_DIALOG: '1', WEB_PORT: String(port), UDP_PORT: String(port + 3000), DATA_DIR: data, AIRSPACE: 'off' }, stdio: 'ignore' });
+  let ended = false; app.on('exit', () => { ended = true; });
+  try {
+    await until(async () => (await fetchJSON(port, '/info')).status === 200);
+    await new Promise((r) => setTimeout(r, 3500));
+    assert.equal(ended, false, 'the app is still running after the hub came up');
+    await fetchJSON(port, '/launcher/stop', { method: 'POST', headers: { 'X-Launcher': '1', Origin: `http://localhost:${port}`, Host: `localhost:${port}` } });
+    await until(async () => ended, 20000);
+    assert.equal(ended, true, 'and it ends when the hub is stopped');
+  } finally { app.kill(); try { const pid = fs.readFileSync(path.join(data, 'hub.pid'), 'utf8'); process.kill(+pid); } catch (e) { /* none */ } }
 });
