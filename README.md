@@ -9,19 +9,19 @@ phone on the same network opens a live dashboard in the browser.
   the bytes out to any number of browsers over Server-Sent Events.
 - **Works offline.** Map tiles are cached on disk the first time they are viewed, and
   whole areas can be downloaded ahead of a trip from the *Offline* tab.
-- **No install step.** Node.js is the only requirement. Leaflet and the QR library are
-  vendored in `vendor/`.
+- **Nothing to install.** Download, unzip, double-click: the download includes its own Node.js. Leaflet and
+  the QR library are bundled too, so it even works without internet.
 
 New here? Jump to [Setting up a hub laptop](#setting-up-a-hub-laptop-windows).
 
 <table align="center">
 <tr>
-<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/archive/refs/heads/main.zip"><img src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a><br><sub>Unzip it, then double-click <b>MAVLink Hub.bat</b></sub></td>
-<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/archive/refs/heads/main.zip"><img src="https://img.shields.io/badge/Download-Mac-1D1D1F?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Mac"></a><br><sub>Unzip it, then double-click <b>MAVLink Hub.app</b></sub></td>
+<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Windows.zip"><img src="docs/buttons/download-windows.svg" alt="Download for Windows" width="300"></a><br><sub>About 37 MB. Unzip it, then open <b>MAVLink Hub.bat</b></sub></td>
+<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Mac.zip"><img src="docs/buttons/download-mac.svg" alt="Download for Mac" width="300"></a><br><sub>About 88 MB, Apple Silicon and Intel. Unzip it, then open <b>MAVLink Hub.app</b></sub></td>
 </tr>
 </table>
 
-<p align="center"><sub>Both buttons give the same ZIP, which holds the launcher for each system. You also need <a href="https://nodejs.org">Node.js</a> (the LTS version, installed with the defaults). Full steps are in <a href="#setting-up-a-hub-laptop-windows">Setting up a hub laptop</a>.</sub></p>
+<p align="center"><sub><b>Nothing else to install</b>: Node.js is inside each download. Full steps are in <a href="#setting-up-a-hub-laptop-windows">Setting up a hub laptop</a>. Prefer to see how it is made? <a href="#building-the-downloads">Building the downloads</a>.</sub></p>
 
 ![The Flight tab in dark mode: attitude indicator, speed, altitude, battery and flight mode tiles. The Altitude tile is a soft red because the aircraft is above the drone ceiling for where it is.](docs/screenshots/flight-dark.jpg)
 
@@ -43,22 +43,17 @@ New here? Jump to [Setting up a hub laptop](#setting-up-a-hub-laptop-windows).
 ## Setting up a hub laptop (Windows)
 
 The hub laptop is the one computer that receives the telemetry. Everyone else just opens a
-web page on it. Allow about fifteen minutes the first time.
+web page on it. Allow about ten minutes the first time.
 
-### 1. Install Node.js
+### 1. Download and unzip
 
-1. Go to <https://nodejs.org> and download the **LTS** installer for Windows.
-2. Run it and accept the defaults. Nothing else needs installing.
-3. To check, open Command Prompt (press Start, type `cmd`) and type `node --version`. A
-   version number such as `v22.x` means it worked. Anything from v18 up is fine.
+Click **Download for Windows** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Windows.zip)), then
+unzip it somewhere you will keep it, for example `C:\MAVLink Hub`. Keep everything in the folder together.
+Nothing else needs installing: the folder carries its own copy of Node.js. (If your browser or Windows warns
+about the download, that is because it is a ZIP of scripts from a small project; see the checksums
+below if you want to verify it.)
 
-### 2. Get the hub
-
-- Easiest: click **Download for Windows** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/archive/refs/heads/main.zip)), then
-  unzip it somewhere you will keep it, for example `C:\MAVLink Hub`. Keep all the files together.
-- Or, if you use Git: `git clone https://github.com/douggreenak/Mavlink-Hub.git`
-
-### 3. Start it for the first time
+### 2. Start it for the first time
 
 1. Double-click **MAVLink Hub.bat**. If Windows SmartScreen says it protected your PC,
    click **More info → Run anyway**; the file is a plain script you can open in Notepad.
@@ -85,19 +80,19 @@ web page on it. Allow about fifteen minutes the first time.
 
 Same idea, with a Mac app instead of the batch file.
 
-1. Install Node.js from <https://nodejs.org> (the LTS version, defaults are fine), or `brew install node`.
-2. Click **Download for Mac** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/archive/refs/heads/main.zip)) and unzip it somewhere you will keep it.
-3. Double-click **MAVLink Hub.app**, which must stay in the same folder as `server.js`. The first
+1. Click **Download for Mac** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Mac.zip)) and unzip it
+   somewhere you will keep it. It works on both Apple Silicon and Intel Macs, and carries its own Node.js.
+2. Double-click **MAVLink Hub.app**, which must stay in the same folder as `server.js`. The first
    time, macOS may refuse because it was downloaded: right-click the app and choose **Open**,
    then **Open** again. If it still refuses, open *System Settings → Privacy & Security* and
    click **Open Anyway**, or run `xattr -dr com.apple.quarantine "MAVLink Hub.app"` in a terminal
    in that folder.
-4. When macOS asks whether to let **node** accept incoming network connections, click **Allow**.
+3. When macOS asks whether to let **node** accept incoming network connections, click **Allow**.
    That is what lets the aircraft's telemetry and your phones reach the hub.
 
 The Mac app is the only difference; everything below applies to both.
 
-### 4. Connect the plane's telemetry
+### 3. Connect the plane's telemetry
 
 The hub listens for MAVLink on UDP port 14550 and nothing else needs configuring on the
 laptop. What matters is that the telemetry source and the laptop are on the same network.
@@ -130,7 +125,7 @@ Only one program can receive the UDP stream on a given port. If Mission Planner 
 QGroundControl is also running on the hub laptop and listening on 14550, they will fight
 over the packets; close them there, or give the hub a different `UDP_PORT` (see Settings).
 
-### 5. Open the dashboard on phones and other laptops
+### 4. Open the dashboard on phones and other laptops
 
 1. Put the phone on the same Wi-Fi as the hub laptop.
 2. On the hub's dashboard click **Open on phone** and scan the QR code, or type the
@@ -139,7 +134,7 @@ over the packets; close them there, or give the hub a different `UDP_PORT` (see 
 3. Add it to the phone's home screen for a full-screen view. Any number of screens can
    watch at once; units and hidden tiles are shared across all of them.
 
-### 6. Before a flying trip
+### 5. Before a flying trip
 
 - **Save the maps while you still have internet.** Open the *Offline* tab, frame the flying
   area, pick a detail level, and download. Tiles you merely look at on the *Map* tab are
@@ -152,8 +147,8 @@ over the packets; close them there, or give the hub a different `UDP_PORT` (see 
 
 ### Updating
 
-Download the new ZIP and replace the files in the hub folder. Saved maps and settings are
-kept elsewhere, so nothing is lost. If you use Git, `git pull`.
+Download the new ZIP, unzip it next to the old folder, copy your `hub.env` across if you made one, and delete
+the old folder. Saved maps and settings are kept elsewhere, so nothing is lost. If you use Git, `git pull`.
 
 ### Troubleshooting
 
@@ -214,6 +209,8 @@ folder, and the **Show log** button displays them.
 - **Windows without the window**: `start.bat` runs the hub in a plain console.
 - **Mac**: `start.command` does the same in a Terminal window.
 - **Linux, or any computer**: `node launcher.js` for the window, or `node server.js` for just the hub.
+- **From a Git checkout** (no bundled Node): install [Node.js](https://nodejs.org) 18 or newer, then run one of the commands
+  above. The launchers use the bundled copy in `runtime/` when there is one and fall back to the Node on your computer.
 
 Then open <http://localhost:8080>.
 
@@ -418,6 +415,32 @@ start the hub first and open the dashboard. Profiles can be combined, for exampl
 racetrack with wind, so the course differs from the heading and the turns are real. Use `--host` and `--port`
 to point it at another machine.
 
+## Building the downloads
+
+The two ZIPs are built by one script and are not stored in the repository (they are large):
+
+```bash
+node tools/build-packages.js            # both, with the current Node LTS, into dist/
+node tools/build-packages.js --only mac # one of them
+node tools/build-packages.js --node v24.22.2
+```
+
+It copies the app and the right launchers for each system, adds Node.js straight from nodejs.org, and refuses to
+use a download whose SHA-256 does not match nodejs.org's published list. The official Node binaries are used
+untouched, so their signatures stay valid (the Mac package holds one for Apple Silicon and one for Intel; the
+launcher picks the right one). `dist/SHA256SUMS.txt` lists the checksum of each ZIP. Needs `zip`, `unzip` and `tar`.
+
+To publish a version, push a tag; a GitHub Action builds the packages and attaches them to a release, which is what
+the download buttons point at:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Windows and Mac cannot be signed without paid developer certificates, so each shows a one-time warning on first run;
+the steps above explain how to approve it.
+
 ## Tests
 
 ```bash
@@ -438,5 +461,8 @@ all offline:
 - the launcher's control API is tested for who may use it (only this computer, only the hub's own host name, only with
   the right header, so another web page cannot press Stop), for every button's action, and for the stop-when-closed
   switch; `launcher.js` is run for real to check it starts a hidden hub, reuses a running one, and explains a busy port;
+- the download packages are assembled and run on their own (a packaged copy starts a working hub), the Mac app is
+  started with no Node on the system to prove it uses the bundled one, and every launcher is checked to look where the
+  build puts it;
 - the airspace service is tested against a fake FAA server using trimmed real FAA responses in `test/fixtures`
   (caching, offline use, FAA outages, paging, your own files), plus the inside / will-enter logic.

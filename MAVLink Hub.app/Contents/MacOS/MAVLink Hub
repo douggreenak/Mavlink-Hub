@@ -9,9 +9,19 @@ dialog() { # dialog "message" -> shows a message box
   /usr/bin/osascript -e 'on run argv' -e 'display dialog (item 1 of argv) with title "MAVLink Hub" buttons {"OK"} default button 1 with icon caution' -e 'end run' "$1" >/dev/null 2>&1
 }
 
-# Finder starts apps with a bare PATH, so look where Node usually lives.
+# The downloadable package carries its own Node, one build for Apple Silicon and one for Intel; use that first.
+# Clearing the download "quarantine" flag (the user has just approved this app) keeps macOS from asking again about it.
+case "$(uname -m)" in arm64) BUNDLED="$HERE/runtime/node-arm64" ;; *) BUNDLED="$HERE/runtime/node-x64" ;; esac
+NODE=""
+if [ -f "$BUNDLED" ]; then
+  chmod +x "$BUNDLED" 2>/dev/null
+  /usr/bin/xattr -dr com.apple.quarantine "$HERE" 2>/dev/null
+  NODE="$BUNDLED"
+fi
+
+# Otherwise a Node the user installed. Finder starts apps with a bare PATH, so look where Node usually lives.
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:$PATH"
-NODE="$(command -v node)"
+[ -z "$NODE" ] && NODE="$(command -v node)"
 if [ -z "$NODE" ]; then
   for n in "$HOME"/.nvm/versions/node/*/bin/node "$HOME/.volta/bin/node" "$HOME/.fnm/aliases/default/bin/node"; do [ -x "$n" ] && NODE="$n"; done
 fi

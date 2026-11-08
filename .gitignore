@@ -7,3 +7,7 @@ node_modules/
 
 # Local settings file (copy hub.env.example)
 hub.env
+
+# Download packages and the cached Node archives made by tools/build-packages.js
+dist/
+.build-cache/

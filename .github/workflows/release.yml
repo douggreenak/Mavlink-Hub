@@ -1,0 +1,34 @@
+# Builds the Windows and Mac download packages (each with its own Node.js) and attaches them to a GitHub release.
+# Run it by pushing a version tag:   git tag v1.1.0 && git push origin v1.1.0
+# If a release for that tag already exists (for example one published by hand with the same files), it does nothing.
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Is there already a release for this tag?
+        id: check
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; echo "Release $GITHUB_REF_NAME already exists; nothing to do."; fi
+      - if: steps.check.outputs.exists != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - if: steps.check.outputs.exists != 'true'
+        run: npm test
+      - if: steps.check.outputs.exists != 'true'
+        run: node tools/build-packages.js
+      - if: steps.check.outputs.exists != 'true'
+        name: Publish the release
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          dist/MAVLink-Hub-Windows.zip dist/MAVLink-Hub-Mac.zip dist/SHA256SUMS.txt
+          --title "MAVLink Hub $GITHUB_REF_NAME" --generate-notes

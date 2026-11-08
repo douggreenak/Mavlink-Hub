@@ -12,10 +12,14 @@ if (-not (Test-Path (Join-Path $repo 'server.js'))) {
   exit 1
 }
 
-# Node.js: on PATH first, then the usual install folders.
+# Node.js: the copy bundled in runtime\ first (the downloadable package includes one), then PATH, then the usual install folders.
 $node = $null
-$cmd = Get-Command node -ErrorAction SilentlyContinue
-if ($cmd) { $node = $cmd.Source }
+$bundled = Join-Path $repo 'runtime\node.exe'
+if (Test-Path $bundled) { $node = $bundled }
+if (-not $node) {
+  $cmd = Get-Command node -ErrorAction SilentlyContinue
+  if ($cmd) { $node = $cmd.Source }
+}
 if (-not $node) {
   foreach ($c in @("$env:ProgramFiles\nodejs\node.exe", "${env:ProgramFiles(x86)}\nodejs\node.exe", "$env:LOCALAPPDATA\Programs\nodejs\node.exe")) {
     if (Test-Path $c) { $node = $c; break }
