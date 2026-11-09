@@ -12,7 +12,7 @@ phone on the same network opens a live dashboard in the browser.
 - **Nothing to install.** Download, unzip, double-click: the download includes its own Node.js. Leaflet and
   the QR library are bundled too, so it even works without internet.
 
-New here? Jump to [Setting up a hub laptop](#setting-up-a-hub-laptop-windows).
+Jump to [Setting up a hub laptop](#setting-up-a-hub-laptop-windows).
 
 <table align="center">
 <tr>
