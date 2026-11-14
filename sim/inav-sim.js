@@ -64,12 +64,18 @@ const MODE = { plane: { manual: 0, fbwa: 5, fbwb: 6, cruise: 7, auto: 10, rtl: 1
 
 function createSim(profileNames = ['full'], opts = {}) {
   const P = resolveProfile(profileNames), rand = rng(opts.seed || 1), DT = 0.02;
+  // Where and how the flight goes (the demo's preset places): opts.home [lat, lon]; opts.alt / opts.swing, the height above home
+  // and how far it rises and falls (m); opts.routeScale, a multiplier on the loop's size; opts.airborne, start already flying.
+  if (opts.home) P.home = opts.home;
+  if (opts.airborne) P.armAt = 0;
   const isPlane = P.vehicle === 'plane';
   const cells = 4, lat0 = P.home[0], lon0 = P.home[1], mPerLon = 111320 * Math.cos(lat0 * D2R);
   const seq = {};                                                // per (sysid,compid) MAVLink sequence counters
   const nextSeq = (k) => (seq[k] = ((seq[k] || 0) + 1) & 255);
-  const route = isPlane ? [[0, 300], [500, 300], [500, -300], [0, -300]] : [[150, 0], [0, 150], [-150, 0], [0, -150]];
+  const scale = opts.routeScale || 1;
+  const route = (isPlane ? [[0, 300], [500, 300], [500, -300], [0, -300]] : [[150, 0], [0, 150], [-150, 0], [0, -150]]).map(([x, y]) => [x * scale, y * scale]);
   const s = { t: 0, x: 0, y: 0, psi: 0, phi: 0, theta: 0, alt: 0, climb: 0, va: 0, thr: 0, wp: 0, armed: false, consumed: 0, cur: 0, homeSet: false, last: { phi: 0, theta: 0, psi: 0 } };
+  if (opts.airborne) { s.alt = opts.alt || 80; s.va = isPlane ? 19 : 9; }
   const next = {}, out = [];
   const period = (r) => (r > 0 ? 1 / r : Infinity);
 
@@ -83,13 +89,13 @@ function createSim(profileNames = ['full'], opts = {}) {
       const flyT = t - P.armAt, vaTarget = isPlane ? 19 : 9;
       s.va += clamp(vaTarget - s.va, -3 * DT, 4 * DT);
       const tgt = route[s.wp], dx = tgt[0] - s.x, dy = tgt[1] - s.y, dist = Math.hypot(dx, dy);
-      if (dist < (isPlane ? 75 : 25)) s.wp = (s.wp + 1) % route.length;
+      if (dist < (isPlane ? 75 : 25) * Math.sqrt(scale)) s.wp = (s.wp + 1) % route.length;
       const bearing = Math.atan2(dx, dy), err = wrapPi(bearing - s.psi);
       const bankMax = isPlane ? 0.6 : 0.25, phiCmd = clamp(2.2 * err, -bankMax, bankMax);
       s.phi += clamp(phiCmd - s.phi, -1.0 * DT, 1.0 * DT);       // bank rate limit ~57 deg/s
       const rate = isPlane ? (G * Math.tan(s.phi)) / Math.max(s.va, 5) : clamp(1.2 * err, -0.8, 0.8);
       s.psi = wrap2Pi(s.psi + rate * DT);
-      const altT = isPlane ? 80 + 30 * Math.sin(flyT / 40) : 40;
+      const altT = isPlane ? (opts.alt ?? 80) + (opts.swing ?? 30) * Math.sin(flyT / 40) : 40;
       const climbT = clamp(0.3 * (altT - s.alt), -3, 4);
       s.climb += (climbT - s.climb) * Math.min(1, DT / 1.2);
       s.alt = Math.max(0, s.alt + s.climb * DT);

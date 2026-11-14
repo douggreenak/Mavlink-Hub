@@ -76,15 +76,28 @@ loadSettings();
 // the demo refuses to start while an aircraft is sending, and stops the moment real data arrives.
 let demo = null, realLast = 0;   // realLast: when an actual aircraft last sent something (the demo's own packets do not count)
 const DEMO_PROFILE = ['full', 'fast'];
-const demoEvent = () => `event: demo\ndata: ${JSON.stringify({ running: !!demo })}\n\n`;
-function startDemo() {
-  if (demo) return { ok: true, running: true };
+// The places the demo can fly over. `alt` is the height above home in metres (chosen from the real terrain so it clears the peaks).
+const DEMO_PLACES = [
+  { id: 'fairbanks', name: 'Fairbanks city', home: [64.8378, -147.7164], alt: 150, swing: 25, routeScale: 2 },
+  { id: 'anchorage', name: 'Anchorage city', home: [61.2181, -149.9003], alt: 180, swing: 25, routeScale: 2 },
+  { id: 'mountains', name: 'Over the Chugach mountains', home: [61.0900, -149.6450], alt: 900, swing: 40, routeScale: 3 },
+  { id: 'seward', name: 'Seward and Resurrection Bay', home: [60.1042, -149.4422], alt: 1150, swing: 40, routeScale: 3 },
+  { id: 'denali', name: 'Denali (Alaska Range)', home: [63.0695, -151.0074], alt: 700, swing: 40, routeScale: 3 },
+];
+const demoPlace = (id) => DEMO_PLACES.find((p) => p.id === id) || null;
+const demoInfo = () => ({ running: !!demo, place: demo ? { id: demo.place.id, name: demo.place.name } : null });
+const demoEvent = () => `event: demo\ndata: ${JSON.stringify(demoInfo())}\n\n`;
+function startDemo(placeId) {
+  const place = demoPlace(placeId || DEMO_PLACES[0].id);
+  if (!place) return { error: 'Unknown demo place' };
+  if (demo && demo.place.id === place.id) return { ok: true, running: true };
+  if (demo) { clearInterval(demo.timer); demo = null; }   // a different place: restart there
   if (realLast && Date.now() - realLast < 5000) return { error: 'An aircraft is sending telemetry right now, so the demo was not started.' };
-  const { createSim } = require('./sim/inav-sim.js'), sim = createSim(DEMO_PROFILE, { seed: 1 }), t0 = Date.now();
+  const { createSim } = require('./sim/inav-sim.js'), sim = createSim(DEMO_PROFILE, { seed: 1, home: place.home, alt: place.alt, swing: place.swing, routeScale: place.routeScale, airborne: true }), t0 = Date.now();
   const timer = setInterval(() => {
     for (const d of sim.advance((Date.now() - t0) / 1000)) { stats.packets++; stats.bytes += d.buf.length; stats.last = Date.now(); demo.fed = true; broadcast('data: ' + d.buf.toString('base64') + '\n\n'); }
   }, 50);
-  demo = { sim, timer, fed: false };
+  demo = { sim, timer, fed: false, place };
   broadcast(demoEvent());
   return { ok: true, running: true };
 }
@@ -260,9 +273,12 @@ function handle(req, res) {
     if (url !== '/demo') {
       const host = req.headers.host, origin = req.headers.origin;
       if (req.method !== 'POST' || req.headers['x-hub'] !== '1' || (origin && origin !== 'http://' + host)) { res.writeHead(403).end('Forbidden'); return; }
-      if (url === '/demo/start') { const r = startDemo(); if (r.error) { res.writeHead(409, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(r)); } } else stopDemo();
+      if (url === '/demo/start') {
+        const r = startDemo(new URLSearchParams(qs).get('place'));
+        if (r.error) { res.writeHead(r.error === 'Unknown demo place' ? 400 : 409, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(r)); }
+      } else stopDemo();
     }
-    json(res, { running: !!demo });
+    json(res, { ...demoInfo(), places: DEMO_PLACES.map((p) => ({ id: p.id, name: p.name })) });
   } else if (url === '/precache/plan') {
     const p = parsePlan(qs);
     if (p.error) return json(res, { error: p.error });

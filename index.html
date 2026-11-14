@@ -78,6 +78,11 @@ body.editing .hideable{cursor:pointer;outline:2px dashed var(--p);outline-offset
 body.editing .hideable.off{display:block;opacity:.4}
 body.editing .hideable::after{content:'✕';position:absolute;top:8px;right:10px;width:24px;height:24px;border-radius:50%;background:var(--p);color:var(--op);display:grid;place-items:center;font-size:12px}
 body.editing .hideable.off::after{content:'+'}
+#demomenu{display:none;position:fixed;z-index:3000;min-width:250px;max-width:calc(100vw - 20px);padding:6px;border-radius:14px;box-shadow:var(--shadow)}
+#demomenu h4{margin:6px 10px 4px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mute)}
+#demomenu button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--ink);font:inherit;font-size:14px;padding:9px 10px;border-radius:9px;cursor:pointer}
+#demomenu button:hover,#demomenu button:focus-visible{background:var(--sh);outline:none}
+#asp.folded h2{margin-bottom:0}
 #chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .chip:empty{display:none}
 #link,#arm{font-weight:600}
@@ -162,7 +167,7 @@ button.chip.warn{background:var(--warn);color:var(--owarn)}
 .leaflet-popup-content{font:400 13px/1.4 "Roboto Flex",system-ui,sans-serif}
 </style></head><body>
 <header><h1>Flight telemetry</h1>
-<div id="chips"><span id="link" class="chip">Connecting…</span><span id="arm" class="chip"></span><button id="demo" class="chip" style="cursor:pointer">Demo mode</button><button id="theme" class="chip" style="cursor:pointer">Theme: Auto</button><button id="units" class="chip" style="cursor:pointer">Units: Metric</button><button id="edit" class="chip" style="cursor:pointer">Edit tiles</button><button id="he" class="chip" style="cursor:pointer">Hide empty</button><button id="qrb" class="chip" style="cursor:pointer">Open on phone</button></div>
+<div id="chips"><span id="link" class="chip">Connecting…</span><span id="arm" class="chip"></span><button id="demo" class="chip" style="cursor:pointer">Demo mode ▾</button><button id="theme" class="chip" style="cursor:pointer">Theme: Auto</button><button id="units" class="chip" style="cursor:pointer">Units: Metric</button><button id="edit" class="chip" style="cursor:pointer">Edit tiles</button><button id="he" class="chip" style="cursor:pointer">Hide empty</button><button id="qrb" class="chip" style="cursor:pointer">Open on phone</button></div>
 <button id="bars" class="bars" aria-label="Connection stats"></button></header>
 <nav id="nav"><button data-v="flight" class="on">Flight</button><button data-v="map">Map</button><button data-v="synth3d">3D Vision</button><button data-v="maps">Offline</button><button data-v="all">All data</button></nav>
 <main>
@@ -178,7 +183,8 @@ button.chip.warn{background:var(--warn);color:var(--owarn)}
  <div class="card" id="mapmsg" style="display:none"></div>
  <div class="mrow"><button class="chip" id="fol" style="cursor:pointer">Following plane</button><button class="chip" id="lay" style="cursor:pointer">Satellite</button><label class="chip pathsl" title="How far ahead the turn path is drawn. Off at the left.">Path <input type="range" id="prd" min="0" max="60" step="5" value="15" aria-label="Seconds ahead for the predicted path"><b id="prdv">15 s</b></label><button class="chip" id="asb" style="cursor:pointer">Airspace: Off</button><button class="chip" id="dl" style="cursor:pointer">Save this view offline</button></div>
  <div class="card" id="asp" style="display:none">
-  <h2>Airspace<span id="asst" class="mute small"></span></h2>
+  <h2>Airspace<span><span id="asst" class="mute small"></span> <button class="chip" id="aspx" type="button" aria-expanded="true" style="cursor:pointer;margin-left:8px">Hide</button></span></h2>
+  <div id="aspbody">
   <div class="mrow" id="asl">
    <label class="chip"><input type="checkbox" data-asl="controlled"> Controlled (B / C / D / E)</label>
    <label class="chip"><input type="checkbox" data-asl="special"> Restricted &amp; military</label>
@@ -191,6 +197,7 @@ button.chip.warn{background:var(--warn);color:var(--owarn)}
   <p class="mute small" id="asdet" style="margin:8px 0 0"></p>
   <p class="mute small" id="asdir" style="margin:6px 0 0"></p>
   <p class="mute small" style="margin:6px 0 0"><b>Advisory only.</b> This data comes from the FAA and may be out of date or incomplete. It does not replace the FAA's own tools (B4UFLY, NOTAMs) or your responsibility to check before flying.</p>
+  </div>
  </div>
  <div id="lf"></div><canvas id="cv"></canvas>
 </div>
@@ -229,7 +236,7 @@ button.chip.warn{background:var(--warn);color:var(--owarn)}
 <div id="all" class="view"><div class="all" id="allbox"></div></div>
 </main>
 <div id="qr" class="dlg"><div class="card"><h2>Open on your phone</h2><div id="qrbox"></div><div id="qrurl"></div><div id="qrsel"></div><p id="qrnote" style="font-size:14px;color:var(--mute)"></p><button id="qrx" class="chip" style="cursor:pointer">Close</button></div></div>
-<div id="conn" class="card"></div><div id="snack"></div>
+<div id="demomenu" class="card" role="menu"></div><div id="conn" class="card"></div><div id="snack"></div>
 <script>
 const $=id=>document.getElementById(id);
 const SZ={u8:1,i8:1,u16:2,i16:2,u32:4,i32:4,f32:4,u64:8};
@@ -399,9 +406,10 @@ function mapUpdate(){
    lpredT=[1,2,3,4,5,6].map(k=>L.marker([0,0],{interactive:false,keyboard:false,icon:L.divIcon({className:'ptick',html:'<b></b><span>'+k*10+' s</span>',iconSize:[0,0]})}));
    lp=L.marker([la,lo],{icon:L.divIcon({className:'',iconSize:[34,34],iconAnchor:[17,17],html:'<div class="pl"><svg viewBox="0 0 24 24" width="34" height="34"><path d="M12 2l3 9 7 3v2l-7-1-1 5 2 2v1l-4-1-4 1v-1l2-2-1-5-7 1v-2l7-3z" fill="#F6C343" stroke="#1B2430" stroke-width="1.5"/></svg></div>'})}).addTo(lm);
    lh=L.circleMarker(Home?[Home.lat,Home.lon]:P[0],{radius:7,color:'#fff',weight:2,fillColor:'#2DA86B',fillOpacity:1}).addTo(lm);
+   mapZoom=false;lm.on('zoomstart',()=>{mapZoom=true});lm.on('zoomend',()=>{mapZoom=false;mapFrame()});
    lm.on('dragstart',()=>{follow=false;$('fol').textContent='Follow plane'});
    asInit()}
-  ll.setLatLngs(P);if(Home&&lh)lh.setLatLng([Home.lat,Home.lon]);mapFrame();
+  if(!mapZoom){ll.setLatLngs(P);if(Home&&lh)lh.setLatLng([Home.lat,Home.lon])}mapFrame();
  }else{
   $('lf').style.display='none';$('cv').style.display='block';
   const c=$('cv'),r=c.getBoundingClientRect(),k=devicePixelRatio||1;c.width=r.width*k;c.height=r.height*k;
@@ -548,8 +556,9 @@ function updatePrediction(la,lo){
   if(t<=pr.maxT){m.setLatLng(pathPoint(la,lo,Z.crs,spd,rate,t));if(!lm.hasLayer(m))m.addTo(lm)}else if(lm.hasLayer(m))lm.removeLayer(m)});
  predOn=true
 }
+let mapZoom=false; // true while the map's own zoom animation runs: nothing may move the map or its layers meanwhile, or it glitches until it settles
 function mapFrame(){
- if(!lm||!lp||!P.length)return;
+ if(!lm||!lp||!P.length||mapZoom)return;
  const la=Z.lat??P[P.length-1][0],lo=Z.lon??P[P.length-1][1];
  lp.setLatLng([la,lo]);lp.setOpacity(Date.now()-lastRx<2500?1:.4);
  const e=lp.getElement();if(e&&e.firstChild)e.firstChild.style.transform='rotate('+(Z.hdg||0)+'deg)';
@@ -627,7 +636,7 @@ function demUpdate(org,lat,lon){
  if(settled!==DEM.settled){DEM.settled=settled;DEM.ver++}
  if(DEM.ref==null){ // home's own height: from the detailed tile once it has loaded (or failed), so it never shifts afterwards
   const[hx,hy]=demTileOf(DEM_ZS[0],org.lat,org.lon),h=DEM.t.get(DEM_ZS[0]+'/'+hx+'/'+hy);
-  if(h&&h.s!=='load'){const r=demSample(org.lat,org.lon);if(r!=null){DEM.ref=r;DEM.ver++}}}
+  if(h&&h.s!=='load'){const r=demSample(org.lat,org.lon);if(r!=null){DEM.ref=Math.max(r,0);DEM.ver++}}}
 }
 const demReady=()=>DEM.ref!=null&&DEM.settled;
 function demStatus(){
@@ -640,7 +649,7 @@ let v3dOrg=null; // home (or the first fix), the origin of the 3D world
 function v3dElev(x, z) {
   if(DEM.ref==null||!v3dOrg)return 0;
   const e=demSample(v3dOrg.lat+z/111320,v3dOrg.lon+x/(111320*Math.cos(v3dOrg.lat*D2R)));
-  return e==null?0:e-DEM.ref;
+  return e==null?0:Math.max(e,0)-DEM.ref; // water is a flat surface at sea level: the sea-floor depths in the data are not drawn
 }
 
 // ---- Meshes. Vertex layout: x,y,z, r,g,b, nx,ny,nz. Normals are flat per face, pointing away from `ref` (a point inside the solid). ----
@@ -662,7 +671,7 @@ function v3dMesh(){
 // A plain light-aircraft model: fuselage, canopy, tapered wings with dihedral, tail, and tiny navigation lights (left red, right green).
 function v3dBuildPlane(){
  const m=v3dMesh(),body=[.86,.87,.89],belly=[.62,.64,.68],glass=[.17,.21,.27],dark=[.30,.32,.36],red=[.85,.12,.12],green=[.12,.75,.25];
- const rings=[[-3.3,.06,.06,.3],[-2.4,.14,.17,.22],[-1.2,.3,.34,.05],[0,.42,.46,0],[1.2,.42,.45,0],[2.2,.33,.34,0],[3,.2,.2,0],[3.25,.1,.1,0]],n=12;
+ const rings=[[-3.3,.06,.06,.3],[-2.4,.14,.17,.22],[-1.2,.3,.34,.05],[0,.42,.46,0],[1.2,.42,.45,0],[2.2,.33,.34,0],[3,.2,.2,0],[3.2,.12,.12,0],[3.3,.05,.05,0]],n=12;
  const ring=r=>Array.from({length:n},(_,k)=>{const t=k*2*Math.PI/n;return[r[1]*Math.cos(t),r[3]+r[2]*Math.sin(t),r[0]]});
  for(let i=0;i<rings.length-1;i++){
   const A=ring(rings[i]),B=ring(rings[i+1]),zm=(rings[i][0]+rings[i+1][0])/2,ref=[0,rings[i][3]/2+rings[i+1][3]/2,zm];
@@ -680,13 +689,6 @@ function v3dBuildPlane(){
  m.hex([[-.03,.3,-2.1],[-.03,.3,-3.3],[.03,.3,-3.3],[.03,.3,-2.1],[-.02,1.35,-3],[-.02,1.35,-3.35],[.02,1.35,-3.35],[.02,1.35,-3]],dark);
  return m.f32();
 }
-function v3dBuildProp(){
- const m=v3dMesh(),dark=[.10,.10,.12],sp=[.20,.21,.24],ap=[0,0,3.57];
- const ring=Array.from({length:8},(_,k)=>[.17*Math.cos(k*Math.PI/4),.17*Math.sin(k*Math.PI/4),3.25]);
- for(let k=0;k<8;k++)m.tri(ring[k],ring[(k+1)%8],ap,sp,[0,0,3.2]);
- for(const s of[1,-1])m.hex([[-.07,s*.12,3.3],[.07,s*.12,3.3],[.07,s*.12,3.36],[-.07,s*.12,3.36],[-.05,s*1.25,3.3],[.05,s*1.25,3.3],[.05,s*1.25,3.36],[-.05,s*1.25,3.36]],dark);
- return m.f32();
-}
 function v3dBuildShadow(){
  const m=v3dMesh();for(let k=0;k<16;k++){const a=k*2*Math.PI/16,b=(k+1)*2*Math.PI/16;m.tri([0,0,0],[Math.sin(a),0,Math.cos(a)],[Math.sin(b),0,Math.cos(b)],[0,0,0],[0,-1,0])}
  return m.f32();
@@ -702,15 +704,16 @@ function v3dTerrCol(h,warn,pa){
  const w=warn&&pa>=8?(h>=pa?2:h>=pa-30?1:0):0; // no warnings on the ground
  return[w===2?v3dLerp(base,V3D_RED,.8):w===1?v3dLerp(base,V3D_AMB,.7):base,w];
 }
-// A 96 x 96 quad mesh (75 m cells, about 7 km square) around the aircraft, snapped to the grid so it does not swim as it moves.
-const V3D_N=96,V3D_C=75;
+// A 112 x 112 quad mesh (60 m cells, about 6.7 km square) around the aircraft, snapped to the grid so it does not swim as it moves.
+const V3D_N=112,V3D_C=60;
 function v3dBuildTerrain(px,pz,planeAlt,warn){
  const N=V3D_N,C=V3D_C,S=N+1,gx=Math.round(px/C)*C,gz=Math.round(pz/C)*C,e=C/2;
  const hh=new Float32Array(S*S),cc=new Float32Array(S*S*3),ww=new Uint8Array(S*S),nn=new Float32Array(S*S*3);
  for(let j=0;j<S;j++)for(let i=0;i<S;i++){
   const x=gx+(i-N/2)*C,z=gz+(j-N/2)*C,k=j*S+i,h=v3dElev(x,z),[c,w]=v3dTerrCol(h,warn&&Math.hypot(x-px,z-pz)<2500,planeAlt); // warning colours only for terrain near the aircraft
-  hh[k]=h;ww[k]=w;cc.set(c,k*3);
-  const dx=(v3dElev(x+e,z)-v3dElev(x-e,z))/C,dz=(v3dElev(x,z+e)-v3dElev(x,z-e))/C,l=Math.hypot(dx,1,dz);
+  hh[k]=h;ww[k]=w;cc.set(c,k*3)}
+ for(let j=0;j<S;j++)for(let i=0;i<S;i++){ // normals from the neighbouring heights
+  const k=j*S+i,dx=(hh[j*S+Math.min(S-1,i+1)]-hh[j*S+Math.max(0,i-1)])/(C*(i>0&&i<S-1?2:1)),dz=(hh[Math.min(S-1,j+1)*S+i]-hh[Math.max(0,j-1)*S+i])/(C*(j>0&&j<S-1?2:1)),l=Math.hypot(dx,1,dz);
   nn[k*3]=-dx/l;nn[k*3+1]=1/l;nn[k*3+2]=-dz/l}
  const tris=new Float32Array(N*N*6*9),G=4,lines=new Float32Array((N/G+1)*(S+0)*4*9*2);let o=0,q=0;
  const put=(arr,off,i,j,dy,lc)=>{const k=j*S+i;
@@ -727,52 +730,64 @@ function v3dBuildTerrain(px,pz,planeAlt,warn){
  return{tris,lines:lines.subarray(0,q)};
 }
 
-// ---- Map imagery draped on the terrain (Satellite / Map modes): the hub's own cached tiles, composed into one 2048 px texture ----
-const V3T={layer:null,z:0,tx0:0,ty0:0,cv:null,cx:null,tex:null,dummy:null,imgs:new Map(),busy:0,dirty:false,last:0,rect:[0,1,1,1],has:false,fail:0};
+// ---- Map imagery draped on the terrain (Satellite / Map modes): the hub's own cached tiles, at two sharpnesses ----
+// A wide level (about 8 km across, roughly 4 m per pixel) and a close-up level two zoom levels finer (about 2 km across, roughly 1 m per
+// pixel) that follows the aircraft. Each is one 2048 px texture composed from 8 x 8 tiles; the close-up fades into the wide one at its edge.
+const V3T={imgs:new Map(),busy:0,fail:0,dummy:null,L:[0,1].map(()=>({layer:null,z:0,tx0:0,ty0:0,cv:null,cx:null,tex:null,dirty:false,last:0,rect:[0,1,1,1],has:false,need:[]}))};
 const v3dTileLat=(z,y)=>Math.atan(Math.sinh(Math.PI*(1-2*y/2**z)))/D2R,v3dTileLon=(z,x)=>x/2**z*360-180;
+const v3dTexHas=li=>V3T.L[li].has;
 function v3dTexUpdate(gl,mode,org,lat,lon,now){
- if(mode!=='sat'&&mode!=='map'){V3T.layer=null;return}
- const layer=mode==='sat'?'sat':'street',z=clamp(Math.round(Math.log2(40075017*Math.cos(lat*D2R)/900)),10,17); // a tile is about 0.9 km: 8 x 8 of them cover the mesh
- const[tx,ty]=demTileOf(z,lat,lon),tx0=tx-4,ty0=ty-4;
- if(V3T.layer!==layer||V3T.z!==z||V3T.tx0!==tx0||V3T.ty0!==ty0){Object.assign(V3T,{layer,z,tx0,ty0,dirty:true});if(V3T.layer!==layer)V3T.has=false}
- const need=[];for(let j=0;j<8;j++)for(let i=0;i<8;i++){const x=tx0+i,y=ty0+j;if(x>=0&&y>=0&&x<2**z&&y<2**z)need.push([x,y,Math.hypot(i-3.5,j-3.5)])}
- need.sort((a,b)=>a[2]-b[2]);
- for(const[x,y]of need){
+ if(mode!=='sat'&&mode!=='map'){for(const L of V3T.L){L.layer=null;L.has=false}return}
+ const layer=mode==='sat'?'sat':'street',zw=clamp(Math.round(Math.log2(40075017*Math.cos(lat*D2R)/900)),10,15),zs=[zw,Math.min(17,zw+2)];
+ const jobs=[];
+ V3T.L.forEach((L,li)=>{
+  const z=zs[li];
+  const[tx,ty]=demTileOf(z,lat,lon),tx0=tx-4,ty0=ty-4;
+  if(L.layer!==layer||L.z!==z){L.has=false;L.dirty=true}
+  if(L.layer!==layer||L.z!==z||L.tx0!==tx0||L.ty0!==ty0){Object.assign(L,{layer,z,tx0,ty0,dirty:true});
+   L.need=[];for(let j=0;j<8;j++)for(let i=0;i<8;i++){const x=tx0+i,y=ty0+j;if(x>=0&&y>=0&&x<2**z&&y<2**z)L.need.push([x,y,Math.hypot(i-3.5,j-3.5)])}
+   L.need.sort((a,b)=>a[2]-b[2])}
+  for(const t of L.need)jobs.push([li,t[0],t[1]])});
+ // fetch what is missing: the wide level first, so there is always something, then the close-up
+ for(const[li,x,y]of jobs){
   if(V3T.busy>=8)break;
-  const k=layer+'/'+z+'/'+x+'/'+y,old=V3T.imgs.get(k);
+  const L=V3T.L[li],k=layer+'/'+L.z+'/'+x+'/'+y,old=V3T.imgs.get(k);
   if(old&&!(old.s==='fail'&&now-old.at>30))continue;
   const e={img:new Image(),s:'load',at:0};V3T.imgs.set(k,e);V3T.busy++;
-  e.img.onload=()=>{e.s='ok';V3T.busy--;V3T.dirty=true};
+  e.img.onload=()=>{e.s='ok';V3T.busy--;for(const l of V3T.L)l.dirty=true};
   e.img.onerror=()=>{e.s='fail';e.at=performance.now()/1000;V3T.busy--;V3T.fail++};
   e.img.src='/tiles/'+k}
- if(V3T.imgs.size>600){let n=0;for(const k of V3T.imgs.keys()){if(!k.startsWith(layer+'/'+z+'/')||n++<200)V3T.imgs.delete(k);if(V3T.imgs.size<=400)break}}
- if(V3T.dirty&&now-V3T.last>.25){
-  V3T.dirty=false;V3T.last=now;
-  const cx=V3T.cx;cx.clearRect(0,0,2048,2048);let ok=0;
-  for(const[x,y]of need){const e=V3T.imgs.get(layer+'/'+z+'/'+x+'/'+y);if(e&&e.s==='ok'){cx.drawImage(e.img,(x-tx0)*256,(y-ty0)*256);ok++}}
+ if(V3T.imgs.size>900){let n=0;const keep=new Set(jobs.map(([li,x,y])=>layer+'/'+V3T.L[li].z+'/'+x+'/'+y));for(const k of V3T.imgs.keys()){if(!keep.has(k)&&n++<400)V3T.imgs.delete(k)}}
+ // compose and upload each level when it has new tiles (at most four times a second)
+ V3T.L.forEach(L=>{
+  if(!L.dirty||now-L.last<.25)return;
+  L.dirty=false;L.last=now;
+  L.cx.clearRect(0,0,2048,2048);let ok=0;
+  for(const[x,y]of L.need){const e=V3T.imgs.get(layer+'/'+L.z+'/'+x+'/'+y);if(e&&e.s==='ok'){L.cx.drawImage(e.img,(x-L.tx0)*256,(y-L.ty0)*256);ok++}}
   if(ok){
-   gl.bindTexture(gl.TEXTURE_2D,V3T.tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,V3T.cv);gl.generateMipmap(gl.TEXTURE_2D);
-   const kx=111320*Math.cos(org.lat*D2R),x0=(v3dTileLon(z,tx0)-org.lon)*kx,x1=(v3dTileLon(z,tx0+8)-org.lon)*kx,zt=(v3dTileLat(z,ty0)-org.lat)*111320,zb=(v3dTileLat(z,ty0+8)-org.lat)*111320;
-   V3T.rect=[x0,zt,x1-x0,zt-zb];V3T.has=true}}
+   gl.bindTexture(gl.TEXTURE_2D,L.tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,L.cv);gl.generateMipmap(gl.TEXTURE_2D);
+   const kx=111320*Math.cos(org.lat*D2R),x0=(v3dTileLon(L.z,L.tx0)-org.lon)*kx,x1=(v3dTileLon(L.z,L.tx0+8)-org.lon)*kx,zt=(v3dTileLat(L.z,L.ty0)-org.lat)*111320,zb=(v3dTileLat(L.z,L.ty0+8)-org.lat)*111320;
+   L.rect=[x0,zt,x1-x0,zt-zb];L.has=true}});
 }
 
 // ---- Shaders ----
 let v3dGL=null,v3dProgM=null,v3dProgS=null,v3dLoc={},v3dSLoc={},v3dBuf={},v3dTerrKey='';
 let v3dCam='chase',v3dTerr='svt',v3dHudOn=true,v3dYaw=0,v3dPit=.2,v3dDist=22,v3dFov=1.05;
-let v3dPropAng=0,v3dTaws=0,v3dCH=0,v3dInfoT=0,v3dInfoS='',v3dLoadS='',v3dDrag=null,v3dPinch=0;
+let v3dTaws=0,v3dCH=0,v3dInfoT=0,v3dInfoS='',v3dLoadS='',v3dDrag=null,v3dPinch=0;
 const V3D_CAMS=[['chase','Chase'],['cockpit','Cockpit'],['orbit','Orbit']],V3D_TERRS=[['svt','Synthetic'],['sat','Satellite'],['map','Map']];
-const v3dVS=`attribute vec3 aP,aC,aN;uniform mat4 uVP,uM;uniform vec3 uEye;uniform float uFa,uFb;uniform vec4 uTR;
-varying vec3 vC,vN;varying float vF;varying vec2 vT;
-void main(){vec4 w=uM*vec4(aP,1.);vN=(uM*vec4(aN,0.)).xyz;vC=aC;vF=smoothstep(uFa,uFb,length(w.xyz-uEye));vT=vec2((w.x-uTR.x)/uTR.z,(uTR.y-w.z)/uTR.w);gl_Position=uVP*w;}`;
+const v3dVS=`attribute vec3 aP,aC,aN;uniform mat4 uVP,uM;uniform vec3 uEye;uniform float uFa,uFb;uniform vec4 uTR,uTR2;
+varying vec3 vC,vN;varying float vF;varying vec2 vT,vT2;
+void main(){vec4 w=uM*vec4(aP,1.);vN=(uM*vec4(aN,0.)).xyz;vC=aC;vF=smoothstep(uFa,uFb,length(w.xyz-uEye));vT=vec2((w.x-uTR.x)/uTR.z,(uTR.y-w.z)/uTR.w);vT2=vec2((w.x-uTR2.x)/uTR2.z,(uTR2.y-w.z)/uTR2.w);gl_Position=uVP*w;}`;
 const v3dFS=`#ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
 precision mediump float;
 #endif
-varying vec3 vC,vN;varying float vF;varying vec2 vT;uniform vec3 uFog;uniform float uLit,uAlpha,uTexMix;uniform sampler2D uTex;
+varying vec3 vC,vN;varying float vF;varying vec2 vT,vT2;uniform vec3 uFog;uniform float uLit,uAlpha,uTexMix,uTexMix2;uniform sampler2D uTex,uTex2;
 void main(){
  float d=max(dot(normalize(vN),normalize(vec3(.35,.75,.45))),0.);vec3 base=vC;
  if(uTexMix>0.){vec4 t=texture2D(uTex,vT);float ins=step(0.,vT.x)*step(vT.x,1.)*step(0.,vT.y)*step(vT.y,1.);base=mix(vC,t.rgb,uTexMix*ins*t.a);}
+ if(uTexMix2>0.){vec4 t2=texture2D(uTex2,vT2);float e=min(min(vT2.x,1.-vT2.x),min(vT2.y,1.-vT2.y));base=mix(base,t2.rgb,uTexMix2*smoothstep(0.,.06,e)*t2.a);}
  vec3 c=mix(base,base*(.58+.5*d),uLit);gl_FragColor=vec4(mix(c,uFog,vF),uAlpha);}`;
 const v3dSkyVS=`attribute vec2 aQ;uniform vec3 uF,uR,uU;uniform vec2 uT;varying vec3 vD;
 void main(){vD=uF+uR*aQ.x*uT.x+uU*aQ.y*uT.y;gl_Position=vec4(aQ,.9999,1.);}`;
@@ -815,18 +830,19 @@ function v3dInit(){
    attrs.forEach((a,i)=>gl.bindAttribLocation(p,i,a));gl.linkProgram(p);
    if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));return p};
   const locs=(p,names)=>{const o={};for(const n of names)o[n]=gl.getUniformLocation(p,n);return o};
-  v3dProgM=prog(v3dVS,v3dFS,['aP','aC','aN']);v3dLoc=locs(v3dProgM,['uVP','uM','uEye','uFa','uFb','uFog','uLit','uAlpha','uTR','uTex','uTexMix']);
+  v3dProgM=prog(v3dVS,v3dFS,['aP','aC','aN']);v3dLoc=locs(v3dProgM,['uVP','uM','uEye','uFa','uFb','uFog','uLit','uAlpha','uTR','uTR2','uTex','uTex2','uTexMix','uTexMix2']);
   v3dProgS=prog(v3dSkyVS,v3dSkyFS,['aQ']);v3dSLoc=locs(v3dProgS,['uF','uR','uU','uT','uHor','uZen']);
   const buf=(arr,dyn)=>{const b={buf:gl.createBuffer(),n:0};if(arr)v3dUpload(gl,b,arr,dyn);return b};
-  v3dBuf={plane:buf(v3dBuildPlane()),prop:buf(v3dBuildProp()),shadow:buf(v3dBuildShadow()),terrain:buf(null),lines:buf(null),sky:{buf:gl.createBuffer(),n:6}};
+  v3dBuf={plane:buf(v3dBuildPlane()),shadow:buf(v3dBuildShadow()),terrain:buf(null),lines:buf(null),sky:{buf:gl.createBuffer(),n:6}};
   gl.bindBuffer(gl.ARRAY_BUFFER,v3dBuf.sky.buf);gl.bufferData(gl.ARRAY_BUFFER,Float32Array.of(-1,-1,1,-1,1,1,-1,-1,1,1,-1,1),gl.STATIC_DRAW);
   // textures: a 1x1 stand-in (a sampler must always have something bound) and the map imagery
   V3T.dummy=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,V3T.dummy);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([128,128,128,0]));
-  V3T.cv=document.createElement('canvas');V3T.cv.width=V3T.cv.height=2048;V3T.cx=V3T.cv.getContext('2d');
-  V3T.tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,V3T.tex);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-  const an=gl.getExtension('EXT_texture_filter_anisotropic');if(an)gl.texParameterf(gl.TEXTURE_2D,an.TEXTURE_MAX_ANISOTROPY_EXT,8);
+  for(const L of V3T.L){
+   L.cv=document.createElement('canvas');L.cv.width=L.cv.height=2048;L.cx=L.cv.getContext('2d');
+   L.tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,L.tex);
+   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE)}
+  const an=gl.getExtension('EXT_texture_filter_anisotropic');if(an)for(const L of V3T.L){gl.bindTexture(gl.TEXTURE_2D,L.tex);gl.texParameterf(gl.TEXTURE_2D,an.TEXTURE_MAX_ANISOTROPY_EXT,Math.min(8,gl.getParameter(an.MAX_TEXTURE_MAX_ANISOTROPY_EXT)))}
   gl.enable(gl.DEPTH_TEST);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
   v3dGL=gl;v3dResetCam();v3dResize();
  }catch(err){v3dGL=null;$('v3dInfo').textContent='3D view unavailable: '+err.message}
@@ -859,7 +875,6 @@ function v3dFrame(dt){
  const ready=!!org&&demReady();
  const py=Z.alt||0,roll=Z.roll||0,pitch=Z.pitch||0,hdgDeg=Z.hdg??Z.crs??0,hdg=hdgDeg*D2R;
  const vn=Z.vn||0,ve=Z.ve||0,spd=Z.gs??Math.hypot(vn,ve),armed=!!((V.HEARTBEAT?.f.base_mode||0)&128);
- v3dPropAng+=dt*(armed?Math.max(35,(Z.thr||25)*1.8):(spd>2?spd*2.5:3));
  // terrain warning: look ahead 12 s along the ground track
  let taws=0;
  const gh=ready?v3dElev(px,pz):0;
@@ -893,17 +908,19 @@ function v3dFrame(dt){
  // scene
  gl.useProgram(v3dProgM);
  gl.uniformMatrix4fv(v3dLoc.uVP,false,VP);gl.uniform3fv(v3dLoc.uEye,eye);gl.uniform3fv(v3dLoc.uFog,V3D_HOR);gl.uniform1f(v3dLoc.uFa,1800);gl.uniform1f(v3dLoc.uFb,6000);
- gl.uniform1i(v3dLoc.uTex,0);gl.uniform1f(v3dLoc.uTexMix,0);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,V3T.dummy);gl.uniform4f(v3dLoc.uTR,0,1,1,1);
+ gl.uniform1i(v3dLoc.uTex,0);gl.uniform1i(v3dLoc.uTex2,1);gl.uniform1f(v3dLoc.uTexMix,0);gl.uniform1f(v3dLoc.uTexMix2,0);gl.uniform4f(v3dLoc.uTR,0,1,1,1);gl.uniform4f(v3dLoc.uTR2,0,1,1,1);
+ const texOff=()=>{gl.uniform1f(v3dLoc.uTexMix,0);gl.uniform1f(v3dLoc.uTexMix2,0);for(const u of[1,0]){gl.activeTexture(gl.TEXTURE0+u);gl.bindTexture(gl.TEXTURE_2D,V3T.dummy)}};texOff();
  const ID=M4.id();
  if(ready){
   const svt=v3dTerr==='svt',key=[Math.round(px/V3D_C),Math.round(pz/V3D_C),Math.floor(py/6),svt,DEM.ver].join('|');
   if(key!==v3dTerrKey){v3dTerrKey=key;const t=v3dBuildTerrain(px,pz,py,svt);v3dUpload(gl,v3dBuf.terrain,t.tris,true);v3dUpload(gl,v3dBuf.lines,t.lines,true)}
   v3dTexUpdate(gl,v3dTerr,org,lat,lon,now);
-  const draped=!svt&&V3T.has;
+  const draped=!svt&&v3dTexHas(0),close=!svt&&v3dTexHas(1);
   gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(1,1);
-  if(draped){gl.bindTexture(gl.TEXTURE_2D,V3T.tex);gl.uniform1f(v3dLoc.uTexMix,1);gl.uniform4fv(v3dLoc.uTR,V3T.rect)}
+  if(draped){gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,V3T.L[0].tex);gl.uniform1f(v3dLoc.uTexMix,1);gl.uniform4fv(v3dLoc.uTR,V3T.L[0].rect)}
+  if(close){gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,V3T.L[1].tex);gl.uniform1f(v3dLoc.uTexMix2,1);gl.uniform4fv(v3dLoc.uTR2,V3T.L[1].rect)}
   v3dDraw(v3dBuf.terrain,gl.TRIANGLES,ID,1,1);
-  gl.uniform1f(v3dLoc.uTexMix,0);gl.bindTexture(gl.TEXTURE_2D,V3T.dummy);gl.polygonOffset(0,0);
+  texOff();gl.activeTexture(gl.TEXTURE0);gl.polygonOffset(0,0);
   if(svt)v3dDraw(v3dBuf.lines,gl.LINES,ID,0,.16);
   if(py-gh<400){ // a soft shadow on the ground below
    const S=M4.id();M4.trans(S,S,[px,gh+.35,pz]);M4.rotY(S,S,hdg);M4.scale(S,S,[4.5,1,3.4]);
@@ -911,8 +928,7 @@ function v3dFrame(dt){
   gl.disable(gl.POLYGON_OFFSET_FILL);
  }
  if(v3dCam!=='cockpit'){
-  v3dDraw(v3dBuf.plane,gl.TRIANGLES,A,1,1);
-  const Pm=new Float32Array(A);M4.rotZ(Pm,Pm,v3dPropAng);v3dDraw(v3dBuf.prop,gl.TRIANGLES,Pm,1,1)}
+  v3dDraw(v3dBuf.plane,gl.TRIANGLES,A,1,1)}
  // overlay
  const hc=$('hud3d');
  if(v3dHudOn)drawGarminHUD(hc);else hc.getContext('2d').clearRect(0,0,hc.width,hc.height);
@@ -922,7 +938,7 @@ function v3dFrame(dt){
  else if(!ready)ls=(DEM.busy||!DEM.orgKey||(!DEM.fail))?'s:Loading terrain…':'n:No terrain data yet. The hub needs internet once, or save the area in Offline › Terrain.';
  if(ls!==v3dLoadS){v3dLoadS=ls;const el=$('v3dLoad');el.style.display=ls?'flex':'none';$('v3dSpin').style.display=ls[0]==='s'?'':'none';$('v3dLoadTxt').textContent=ls.slice(2)}
  if(now-v3dInfoT>.3){v3dInfoT=now;
-  const img=!ready||v3dTerr==='svt'?'':V3T.has?(V3T.busy?' · loading imagery…':''):V3T.fail&&!V3T.busy?' · no map imagery (needs internet once)':' · loading imagery…';
+  const img=!ready||v3dTerr==='svt'?'':v3dTexHas(0)?(V3T.busy?' · loading imagery…':''):V3T.fail&&!V3T.busy?' · no map imagery (needs internet once)':' · loading imagery…';
   const s=`${v3dCam==='cockpit'?'Cockpit':v3dCam==='chase'?'Chase':'Orbit'} · alt ${Math.round(CV.len(py))} ${UN.len()} · ground ${Math.round(CV.len(gh))} ${UN.len()} from home · ${demStatus()}${img}`;
   if(s!==v3dInfoS){v3dInfoS=s;$('v3dInfo').textContent=s}}
 }
@@ -942,11 +958,13 @@ function drawGarminHUD(cv){
  const rr=(x,y,w,h,r)=>{g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath()};
  const panel=(x,y,w,h,r)=>{flat();rr(x,y,w,h,r*u);g.fillStyle=GLASS;g.fill();g.strokeStyle=EDGE;g.lineWidth=1*u;g.stroke()};
  halo();
- // pitch ladder and horizon: rotate with the aircraft's roll; rungs sit where the camera would see them
+ // pitch ladder, horizon line, flight path marker and the aircraft reference only make sense when the camera is the aircraft's own
+ // (cockpit view); from behind or orbiting they would cut across the scene at the wrong angle, so those views keep just the instruments
+ const aligned=v3dCam==='cockpit';
  g.save();g.translate(cx,cy);g.rotate(-roll);
  const yAt=d=>-F*Math.tan((d-pd)*D2R),fade=y=>clamp(1.25-Math.abs(y)/(H*.34),0,1);
- line(-W*1.2,yAt(0),W*1.2,yAt(0),WHITE,1.8);
- for(const d of[-30,-25,-20,-15,-10,-5,5,10,15,20,25,30]){
+ if(aligned)line(-W*1.2,yAt(0),W*1.2,yAt(0),WHITE,1.8);
+ for(const d of aligned?[-30,-25,-20,-15,-10,-5,5,10,15,20,25,30]:[]){
   const y=yAt(d);if(Math.abs(y)>H*.5)continue;
   const long=d%10===0,hw=(long?50:26)*u,tip=(d>0?8:-8)*u;
   g.globalAlpha=fade(y);g.strokeStyle=WHITE;g.lineWidth=1.8*u;
@@ -954,14 +972,14 @@ function drawGarminHUD(cv){
   if(long){txt(Math.abs(d),-hw-17*u,y,12,WHITE);txt(Math.abs(d),hw+17*u,y,12,WHITE)}}
  g.globalAlpha=1;
  // flight path marker: where the aircraft is actually going (climb angle, and crab from wind drift)
- if(gs>3){
+ if(aligned&&gs>3){
   const gam=Math.atan2(climb,gs)/D2R,drift=Z.crs!=null?v3dWrap180(Z.crs-hdg):0,lim=H*.4;
   const fx=clamp(F*Math.tan(drift*D2R),-lim,lim),fy=clamp(yAt(gam),-lim,lim);
   g.strokeStyle=GRN;g.lineWidth=2.2*u;g.beginPath();g.arc(fx,fy,7*u,0,6.2832);g.moveTo(fx-7*u,fy);g.lineTo(fx-19*u,fy);g.moveTo(fx+7*u,fy);g.lineTo(fx+19*u,fy);g.moveTo(fx,fy-7*u);g.lineTo(fx,fy-14*u);g.stroke()}
  g.restore();
  // aircraft reference ("batwing"): fixed at the centre
- flat();g.fillStyle=YEL;g.strokeStyle='rgba(0,0,0,.85)';g.lineWidth=1.2*u;g.beginPath();
- g.moveTo(cx-62*u,cy+8*u);g.lineTo(cx-24*u,cy+8*u);g.lineTo(cx,cy-1*u);g.lineTo(cx+24*u,cy+8*u);g.lineTo(cx+62*u,cy+8*u);g.lineTo(cx+24*u,cy+16*u);g.lineTo(cx,cy+7*u);g.lineTo(cx-24*u,cy+16*u);g.closePath();g.fill();g.stroke();
+ if(aligned){flat();g.fillStyle=YEL;g.strokeStyle='rgba(0,0,0,.85)';g.lineWidth=1.2*u;g.beginPath();
+ g.moveTo(cx-62*u,cy+8*u);g.lineTo(cx-24*u,cy+8*u);g.lineTo(cx,cy-1*u);g.lineTo(cx+24*u,cy+8*u);g.lineTo(cx+62*u,cy+8*u);g.lineTo(cx+24*u,cy+16*u);g.lineTo(cx,cy+7*u);g.lineTo(cx-24*u,cy+16*u);g.closePath();g.fill();g.stroke()}
  halo();
  // roll scale: fixed arc with ticks, a pointer that follows the bank angle and a slip/skid bar under it
  const Rr=Math.min(168*u,cy-104*u);
@@ -1060,7 +1078,7 @@ function frame(now){
 let layer='street',tileL;
 function setLayer(){
  if(tileL)lm.removeLayer(tileL);
- tileL=trackBusy(L.tileLayer('/tiles/'+layer+'/{z}/{x}/{y}',{maxZoom:19,attribution:layer==='street'?'© OpenStreetMap':'Tiles © Esri'})).addTo(lm);
+ tileL=trackBusy(L.tileLayer('/tiles/'+layer+'/{z}/{x}/{y}',{maxZoom:19,updateWhenZooming:false,attribution:layer==='street'?'© OpenStreetMap':'Tiles © Esri'})).addTo(lm);
  $('lf').classList.toggle('street',layer==='street');
 }
 $('lay').onclick=()=>{layer=layer==='street'?'sat':'street';$('lay').textContent=layer==='street'?'Satellite':'Street map';if(lm)setLayer()};
@@ -1299,7 +1317,14 @@ function asInit(){
  for(const k of Object.keys(AS.layers))AS.grp[k]=L.geoJSON(null,{pane:'airspace',renderer:rend,style:asStyle,onEachFeature:(f,l)=>l.bindPopup(asPopup(f.properties))});
  lm.on('moveend',()=>{asSchedule(false);asLabels()});asUI();asApply()
 }
+let asCollapsed=false;try{asCollapsed=localStorage.getItem('asc')==='1'}catch(e){}
+function asCollapse(){ // the layer list and notes fold away, leaving just the title and its status line
+ $('aspbody').style.display=asCollapsed?'none':'';$('aspx').textContent=asCollapsed?'Show':'Hide';$('aspx').setAttribute('aria-expanded',String(!asCollapsed));
+ $('asp').classList.toggle('folded',asCollapsed);
+}
+$('aspx').onclick=()=>{asCollapsed=!asCollapsed;try{localStorage.setItem('asc',asCollapsed?'1':'0')}catch(e){}asCollapse()};
 function asUI(){
+ asCollapse();
  $('asb').textContent='Airspace: '+(AS.on?'On':'Off');$('asb').classList.toggle('on',AS.on);$('asp').style.display=AS.on?'':'none';
  for(const c of document.querySelectorAll('[data-asl]'))c.checked=!!AS.layers[c.dataset.asl];
  $('aslg').innerHTML=['prohibited','restricted','tfr','class-b','class-c','class-d','class-e','warning','site'].map(k=>`<span><i style="border-color:${AS_KIND[k][1]};background:${AS_KIND[k][1]}33"></i>${AS_KIND[k][0]}</span>`).join('')+
@@ -1494,22 +1519,34 @@ $('dl').onclick=async()=>{
 };
 // Demo mode runs on the hub: every screen connected to it sees the same simulated flight. The button asks the hub to start or stop it,
 // and the hub tells every screen (the 'demo' event below), so the button and the data change for everyone at once.
-let demo=false;
+let demo=false,demoPlace=null,demoPlaces=[];
 function resetData(){for(const k in V)delete V[k];for(const k in Z)delete Z[k];P.length=0;cells=0;St.odo=0;St.t0=null;for(const k in MX)delete MX[k];if(lm){lm.remove();lm=null}}
-function setDemo(on){
- if(on===demo)return;
- demo=on;lastRx=0;ok=0;resetData();
- $('demo').textContent=on?'Stop demo':'Demo mode';
- if(on)say('Demo mode: a simulated flight, the same on every screen connected to this hub',5000);
+function setDemo(on,place){
+ const pid=place?place.id:null;
+ if(on===demo&&(!on||pid===(demoPlace&&demoPlace.id)))return;
+ demo=on;demoPlace=on?place:null;lastRx=0;ok=0;resetData();
+ $('demo').textContent=on?'Stop demo'+(place?' · '+place.name:''):'Demo mode ▾';
+ if(on)say('Demo mode'+(place?': '+place.name:'')+'. A simulated flight, the same on every screen connected to this hub',5000);
 }
-$('demo').onclick=async()=>{
- const r=await fetch(demo?'/demo/stop':'/demo/start',{method:'POST',headers:{'X-Hub':'1'}}).then(async x=>({...(await x.json().catch(()=>({})))})).catch(()=>({error:'Could not reach the hub'}));
+// "Demo mode" opens a short list of places to fly over; while a demo runs the same button stops it.
+function demoMenu(show){
+ const m=$('demomenu');if(!show){m.style.display='none';return}
+ m.innerHTML='<h4>Fly the demo over</h4>'+(demoPlaces.length?demoPlaces.map(p=>`<button role="menuitem" data-place="${esc(p.id)}">${esc(p.name)}</button>`).join(''):'<div class="mute small" style="padding:8px 10px">Could not reach the hub.</div>');
+ const r=$('demo').getBoundingClientRect();m.style.display='block';m.style.top=r.bottom+6+'px';m.style.left=Math.max(10,Math.min(r.left,innerWidth-m.offsetWidth-10))+'px';
+}
+async function demoCall(url){
+ const r=await fetch(url,{method:'POST',headers:{'X-Hub':'1'}}).then(async x=>({...(await x.json().catch(()=>({})))})).catch(()=>({error:'Could not reach the hub'}));
  if(r.error)say(r.error,6000);
-};
+}
+fetch('/demo').then(r=>r.json()).then(j=>{demoPlaces=j.places||[]}).catch(()=>{});
+$('demo').onclick=e=>{e.stopPropagation();if(demo){demoMenu(false);demoCall('/demo/stop');return}demoMenu($('demomenu').style.display!=='block')};
+$('demomenu').onclick=e=>{const b=e.target.closest('[data-place]');if(!b)return;demoMenu(false);demoCall('/demo/start?place='+encodeURIComponent(b.dataset.place))};
+document.addEventListener('click',()=>demoMenu(false));
+document.addEventListener('keydown',e=>{if(e.key==='Escape')demoMenu(false)});
 const es=new EventSource('/stream');
 es.onopen=()=>hubUp=true;es.onerror=()=>hubUp=false;
 es.onmessage=e=>feed(Uint8Array.from(atob(e.data),ch=>ch.charCodeAt(0)));
-es.addEventListener('demo',e=>{try{setDemo(!!JSON.parse(e.data).running)}catch(x){}});
+es.addEventListener('demo',e=>{try{const o=JSON.parse(e.data);setDemo(!!o.running,o.place)}catch(x){}});
 es.addEventListener('settings',e=>{try{const o=JSON.parse(e.data);cfg.units=o.units;cfg.hidden=o.hidden;applyCfg();try{localStorage.setItem('cfg',JSON.stringify(cfg))}catch(x){}}catch(x){}});
 if(location.protocol==='file:')$('fileWarn').style.display='block';
 applyTheme();applyCfg();requestAnimationFrame(frame);render();
