@@ -39,13 +39,16 @@ function Start-Hub([bool]$noWindow) {
   if ($noWindow) { $env:LAUNCHER_NO_WINDOW = '1' }
   try {
     $p = Start-Process -FilePath $node -ArgumentList ('"' + (Join-Path $repo 'launcher.js') + '"') -WorkingDirectory $repo -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+    $null = $p.Handle     # without this, Start-Process -PassThru often leaves ExitCode blank for a redirected process
     if (-not $p.WaitForExit(60000)) { return @{ code = -1; text = 'The hub is taking too long to start. Check the log in the saved-maps folder (hub.log).'; port = $null } }
   } finally { Remove-Item Env:\LAUNCHER_NO_WINDOW -ErrorAction SilentlyContinue }
   $port = $null; $o = Get-Content $out -Raw -ErrorAction SilentlyContinue
   if ($o -match 'HUB_PORT=(\d+)') { $port = [int]$Matches[1] }
   $msg = (Get-Content $err -Raw -ErrorAction SilentlyContinue)
   if (-not $msg) { $msg = 'The hub could not start.' }
-  return @{ code = $p.ExitCode; text = $msg.Trim(); port = $port }
+  # The HUB_PORT marker is what launcher.js prints on success, so it decides; a blank exit code must never read as failure.
+  $code = if ($port) { 0 } elseif ($null -ne $p.ExitCode) { $p.ExitCode } else { 1 }
+  return @{ code = $code; text = $msg.Trim(); port = $port }
 }
 
 # The app's own window: the control page inside a WebView2 control. Returns $true when it opened and was then closed

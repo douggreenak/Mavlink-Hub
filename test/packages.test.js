@@ -215,6 +215,8 @@ test('the Windows launcher uses the app window (WebView2) from runtime\\webview2
   for (const name of Object.values(B.WEBVIEW2.files)) if (name.endsWith('.dll') && !name.startsWith('WebView2Loader')) assert.ok(ps.includes(name), name + ' is loaded by launcher.ps1');
   assert.match(ps, /Start-Hub \$false/, 'falls back to the browser app window');
   assert.match(ps, /HUB_PORT=/);
+  assert.match(ps, /\$code = if \(\$port\) \{ 0 \}/, 'success is decided by the HUB_PORT marker, because Start-Process often returns a blank exit code');
+  assert.match(ps, /\$null = \$p\.Handle/, 'the process handle is read so the exit code is filled in');
   assert.match(ps, /Stop-Hub \$r\.port/, 'closing the window stops the hub');
   assert.match(B.WEBVIEW2.sha256, /^[0-9a-f]{64}$/);
   const l = fs.readFileSync(path.join(ROOT, 'launcher.js'), 'utf8'); assert.match(l, /HUB_PORT=/);
