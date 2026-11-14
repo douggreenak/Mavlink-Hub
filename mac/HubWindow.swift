@@ -10,6 +10,7 @@ final class Host: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigatio
   var web: WKWebView!
   var misses = 0
   var base: String { "http://localhost:\(port)" }
+  let relaunchMarker = NSTemporaryDirectory() + "mavlink-hub-relaunch"
   init(port: Int) { self.port = port }
 
   func applicationDidFinishLaunching(_ n: Notification) {
@@ -52,7 +53,8 @@ final class Host: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigatio
       DispatchQueue.main.async {
         guard let self = self else { return }
         if (resp as? HTTPURLResponse)?.statusCode == 200 { self.misses = 0 } else { self.misses += 1 }
-        if self.misses >= 3 { NSApp.terminate(nil) }
+        // After an update the hub stops on purpose; the marker file says to close at once and reopen the new copy.
+        if self.misses >= 3 || (self.misses >= 1 && FileManager.default.fileExists(atPath: relaunchMarker)) { NSApp.terminate(nil) }
       }
     }.resume()
   }
@@ -69,6 +71,15 @@ final class Host: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigatio
     let done = DispatchSemaphore(value: 0)
     URLSession.shared.dataTask(with: req) { _, _, _ in done.signal() }.resume()
     _ = done.wait(timeout: .now() + 1.5)
+    // An update was installed over this app: open the new copy (through Launch Services, so it is independent of this one).
+    if let path = try? String(contentsOfFile: relaunchMarker, encoding: .utf8) {
+      try? FileManager.default.removeItem(atPath: relaunchMarker)
+      Thread.sleep(forTimeInterval: 1.0)
+      let open = Process()
+      open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+      open.arguments = ["-n", path.trimmingCharacters(in: .whitespacesAndNewlines)]
+      try? open.run()
+    }
   }
 
   // Only the control page lives in this window; everything else (the dashboard, other sites) opens in the browser.

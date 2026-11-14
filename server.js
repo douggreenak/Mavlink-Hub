@@ -60,6 +60,7 @@ const DOWNLOAD_TIMEOUT = 15000; // ms before an unanswered tile request is aband
 const viewers = new Set();
 const { createAirspace, LAYER_IDS: AIRSPACE_LAYERS } = require('./airspace.js');
 const { createLauncherApi } = require('./launcher-api.js');
+const { createUpdater } = require('./updater.js');
 const VERSION = require('./package.json').version;
 const stats = { packets: 0, bytes: 0, last: 0 };   // what the radio side has sent us, for the launcher window
 let launcher = null, startedAt = Date.now();
@@ -335,6 +336,7 @@ function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migra
       launcher = createLauncherApi({
         dir: DATA_DIR, page: path.join(__dirname, 'launcher.html'),
         profiles: Object.keys(PROFILES).map((name) => ({ name, description: DESCRIBE[name] || '' })),
+        updater: (h) => createUpdater({ ...h, version: VERSION, dataDir: DATA_DIR, serverDir: __dirname, ...(process.env.UPDATE_API ? { apiUrl: process.env.UPDATE_API, allowHttp: true } : {}), ...(launcherDeps.updater || {}) }),
         info: (port) => ({ version: VERSION, startedAt, webPort: port, udpPort: udp.address().port, urls: addresses(port), viewers: viewers.size, stats,
           dataDir: DATA_DIR, airspaceDir: AIRSPACE_DIR, logFile: process.env.HUB_LOG || null }),
         quit: () => { if (launcherDeps.onQuit) launcherDeps.onQuit(); else { launcher.shutdown(); process.exit(0); } },

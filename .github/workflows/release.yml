@@ -1,10 +1,11 @@
-# Builds the Windows and Mac download packages (each with its own Node.js) and attaches them to a GitHub release.
+# Builds the Windows installer, the Mac disk image and the two portable ZIPs (each with its own Node.js) and attaches them to a GitHub release.
 # Run it by pushing a version tag:   git tag v1.1.0 && git push origin v1.1.0
 # If a release for that tag already exists (for example one published by hand with the same files), it does nothing.
 name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:            # a dry run: builds everything and keeps it as a download, publishes nothing
 permissions:
   contents: write
 jobs:
@@ -25,10 +26,18 @@ jobs:
       - if: steps.check.outputs.exists != 'true'
         run: npm test
       - if: steps.check.outputs.exists != 'true'
-        run: node tools/build-packages.js
+        name: Install NSIS (builds the Windows installer)
+        run: brew install makensis
       - if: steps.check.outputs.exists != 'true'
+        run: node tools/build-packages.js --require-installers
+      - if: steps.check.outputs.exists != 'true' && github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mavlink-hub-downloads
+          path: dist/*
+      - if: steps.check.outputs.exists != 'true' && github.ref_type == 'tag'
         name: Publish the release
         run: >
           gh release create "$GITHUB_REF_NAME"
-          dist/MAVLink-Hub-Windows.zip dist/MAVLink-Hub-Mac.zip dist/SHA256SUMS.txt
+          dist/MAVLink-Hub-Setup.exe dist/MAVLink-Hub.dmg dist/MAVLink-Hub-Windows.zip dist/MAVLink-Hub-Mac.zip dist/SHA256SUMS.txt
           --title "MAVLink Hub $GITHUB_REF_NAME" --generate-notes

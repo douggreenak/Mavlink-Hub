@@ -108,6 +108,7 @@ function Stop-Hub([int]$port) {
 }
 
 $native = Test-Path (Join-Path $webview 'Microsoft.Web.WebView2.WinForms.dll')
+$env:HUB_OWNER_PID = $PID     # lets the hub close this window itself when it installs an update
 $r = Start-Hub $native
 if ($r.code -ne 0) { Say $r.text; exit 1 }
 if ($native -and $r.port -and (Show-Window $r.port)) { Stop-Hub $r.port; exit 0 }

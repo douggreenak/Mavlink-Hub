@@ -20,7 +20,7 @@ test('Node download helpers: checksum list, LTS choice, archive names', () => {
 });
 
 const MAC_APP = B.MAC_APP, MAC_RES = B.MAC_RES;
-const CORE = ['server.js', 'airspace.js', 'launcher.js', 'launcher-api.js', 'launcher.html', 'index.html', 'package.json', 'hub.env.example', 'vendor/leaflet.js', 'vendor/qrcode.js', 'assets/icon.png', 'sim/inav-sim.js', 'sim/mavlink.js'];
+const CORE = ['server.js', 'airspace.js', 'updater.js', 'launcher.js', 'launcher-api.js', 'launcher.html', 'index.html', 'package.json', 'hub.env.example', 'vendor/leaflet.js', 'vendor/qrcode.js', 'assets/icon.png', 'sim/inav-sim.js', 'sim/mavlink.js'];
 const STRAY = (f) => /(^|\/)(test|docs|tools|\.git|\.github|\.claude|dist|node_modules)\//.test(f) || /\.test\.js$|README\.md$|\.DS_Store/.test(f);
 
 test('each package holds the app and its own launchers, and nothing else (no tests, docs, build tools or other system\'s files)', () => {
@@ -218,4 +218,29 @@ test('the Windows launcher uses the app window (WebView2) from runtime\\webview2
   assert.match(ps, /Stop-Hub \$r\.port/, 'closing the window stops the hub');
   assert.match(B.WEBVIEW2.sha256, /^[0-9a-f]{64}$/);
   const l = fs.readFileSync(path.join(ROOT, 'launcher.js'), 'utf8'); assert.match(l, /HUB_PORT=/);
+});
+
+test('the Windows installer script: per-user, shortcuts that start the launcher without a console, an uninstall entry, and it keeps saved data unless asked', () => {
+  const nsi = B.nsisScript({ version: 'v1.2.0', srcDir: 'C:\\stage\\MAVLink Hub', outFile: 'C:\\dist\\MAVLink-Hub-Setup.exe', icon: 'C:\\stage\\assets\\hub.ico' });
+  assert.match(nsi, /RequestExecutionLevel user/, 'no administrator prompt, and the folder stays writable so the app can update itself');
+  assert.match(nsi, /InstallDir "\$LOCALAPPDATA\\Programs\\MAVLink Hub"/);
+  assert.match(nsi, /VIProductVersion "1\.2\.0\.0"/);
+  assert.match(nsi, /OutFile "C:\/dist\/MAVLink-Hub-Setup\.exe"/); assert.match(nsi, /File \/r "C:\/stage\/MAVLink Hub\/\*"/);
+  assert.equal((nsi.match(/CreateShortcut/g) || []).length, 3, 'Start menu, uninstall and Desktop');
+  assert.match(nsi, /CreateShortcut "\$DESKTOP\\MAVLink Hub\.lnk" "\$SYSDIR\\WindowsPowerShell\\v1\.0\\powershell\.exe" '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "\$INSTDIR\\launcher\.ps1"'/);
+  assert.match(nsi, new RegExp('WriteRegStr HKCU "' + B.UNINSTALL_KEY.replace(/\\/g, '\\\\') + '" "DisplayVersion" "1\\.2\\.0"'));
+  assert.match(nsi, /UninstallString/); assert.match(nsi, /WriteUninstaller/);
+  assert.match(nsi, /MessageBox MB_YESNO\|MB_DEFBUTTON2 "Also delete your saved maps[^\n]*IDNO keep/, 'data is kept by default');
+  assert.match(nsi, /Section "Uninstall"[\s\S]*RMDir \/r "\$INSTDIR"/);
+  assert.ok(!/\$_\./.test(nsi.replace(/\$\$_/g, '')), 'PowerShell variables are escaped for NSIS');
+});
+
+test('the in-app updater and the release agree on the file names', () => {
+  const U = require('../updater.js'), wf = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
+  for (const f of Object.values(U.ASSET).concat(['SHA256SUMS.txt', 'MAVLink-Hub-Setup.exe', 'MAVLink-Hub.dmg'])) assert.ok(wf.includes(f), f + ' is attached to the release');
+  const b = fs.readFileSync(path.join(ROOT, 'tools', 'build-packages.js'), 'utf8');
+  for (const f of Object.values(U.ASSET)) assert.ok(b.includes(f.replace('-Windows.zip', '').replace('-Mac.zip', '')), 'the build makes ' + f);
+  assert.match(fs.readFileSync(path.join(ROOT, 'launcher.ps1'), 'utf8'), /HUB_OWNER_PID = \$PID/, 'the hub can close the window when it installs an update');
+  assert.match(fs.readFileSync(path.join(ROOT, 'MAVLink Hub.app', 'Contents', 'MacOS', 'MAVLink Hub'), 'utf8'), /export HUB_OWNER_PID/);
+  assert.ok(fs.readFileSync(path.join(ROOT, 'mac', 'HubWindow.swift'), 'utf8').includes(path.basename(U.RELAUNCH_MARKER)), 'the Mac window reads the same relaunch marker the updater writes');
 });

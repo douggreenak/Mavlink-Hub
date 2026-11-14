@@ -50,7 +50,7 @@ function createLauncherApi(o) {
       version: i.version, uptimeS: Math.round((t - i.startedAt) / 1000), webPort: i.webPort, udpPort: i.udpPort, urls: i.urls,
       telemetry: { packets: s.packets, bytes: s.bytes, pps: +rate.pps.toFixed(1), bps: Math.round(rate.bps), lastAgoMs: s.last ? t - s.last : null },
       viewers: i.viewers, dataDir: i.dataDir, airspaceDir: i.airspaceDir, hasLog: !!i.logFile,
-      testFlight: { running: !!flight, profile: flight ? flight.profile : null }, profiles,
+      testFlight: { running: !!flight, profile: flight ? flight.profile : null }, profiles, update: updater ? updater.state() : null,
     };
   }
   const json = (res, code, o2) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o2)); };
@@ -59,6 +59,7 @@ function createLauncherApi(o) {
     req.on('end', () => { let v = {}; try { v = b ? JSON.parse(b) : {}; } catch (e) { return cb(null); } cb(v && typeof v === 'object' ? v : {}); });
   }
   const push = () => { for (const c of clients) c.write(`data: ${JSON.stringify(snapshot(c._port))}\n\n`); };
+  const updater = o.updater ? o.updater({ onChange: push, quit }) : null;   // checks GitHub for a newer version, installs it on request
   function maybeQuit() {
     // Closing the window stops the hub (after a short grace so a reload or a second window opening does not). A hub that no
     // window has ever connected to (started by hand, or with LAUNCHER_NO_WINDOW) is left alone.
@@ -76,6 +77,7 @@ function createLauncherApi(o) {
     if (url === '/launcher/stream' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       res._port = port; clients.add(res); everConnected = true; clearTimeout(graceT);
+      if (updater) updater.checkIfStale();
       res.write(`data: ${JSON.stringify(snapshot(port))}\n\n`);
       if (!timer) { timer = setInterval(push, 1000); timer.unref(); }
       req.on('close', () => { clients.delete(res); if (!clients.size) { clearInterval(timer); timer = null; } maybeQuit(); });
@@ -108,6 +110,12 @@ function createLauncherApi(o) {
         child.on('error', () => { if (flight && flight.child === child) { flight = null; push(); } });
         push(); return json(res, 200, { ok: true });
       }
+      if (url === '/launcher/update/check' && updater) { updater.check().then((s) => json(res, 200, { ok: true, update: s })); return; }
+      if (url === '/launcher/update/install' && updater) {
+        updater.install().then(() => {}, () => {});                     // progress and any error arrive in the stream
+        return json(res, 200, { ok: true });
+      }
+      if (url === '/launcher/update/open' && updater) { open('release', updater.state().url); return json(res, 200, { ok: true }); }
       if (url === '/launcher/stop') { json(res, 200, { ok: true }); setTimeout(quit, 150); return; }
       json(res, 404, { error: 'Not found' });
     });

@@ -19,6 +19,33 @@ show() { # show "message" -> a message box (or plain text when dialogs are switc
   /usr/bin/osascript -e 'on run argv' -e 'display dialog (item 1 of argv) with title "MAVLink Hub" buttons {"OK"} default button 1 with icon caution' -e 'end run' "$1" >/dev/null 2>&1
 }
 
+# Installing: the first time the app runs from anywhere but Applications (the disk image, Downloads, macOS's temporary copy),
+# offer to put it in Applications, where it belongs and where it can update itself. Asked once; "Not now" is remembered.
+# Skipped for a Git checkout, and whenever dialogs are switched off (tests).
+if [ -f "$APP/Contents/Resources/app/server.js" ] && [ -z "$MAVLINK_HUB_NO_DIALOG" ] && [ -z "$LAUNCHER_NO_WINDOW" ]; then
+  case "$APP" in
+    /Applications/*|"$HOME"/Applications/*) ;;
+    *)
+      SKIP="$HOME/Library/Application Support/MAVLink Hub/no-move-prompt"
+      if [ ! -f "$SKIP" ]; then
+        R="$(/usr/bin/osascript -e 'on run argv' -e 'set r to display dialog (item 1 of argv) with title "MAVLink Hub" buttons {"Not now", "Move to Applications"} default button 2' -e 'return button returned of r' -e 'end run' "Move MAVLink Hub to your Applications folder?
+
+It installs the app like any other, so it is easy to find and can update itself." 2>/dev/null)"
+        if [ "$R" = "Move to Applications" ]; then
+          DEST="/Applications/MAVLink Hub.app"; [ -w /Applications ] || DEST="$HOME/Applications/MAVLink Hub.app"
+          mkdir -p "$(dirname "$DEST")"
+          if /usr/bin/ditto "$APP" "$DEST.new" 2>/dev/null; then
+            rm -rf "$DEST"; mv "$DEST.new" "$DEST"; /usr/bin/xattr -dr com.apple.quarantine "$DEST" 2>/dev/null
+            /usr/bin/open -n "$DEST"; exit 0
+          fi
+          rm -rf "$DEST.new"; show "MAVLink Hub could not be copied to Applications. It will run from where it is; drag it to Applications yourself when you like."
+        else
+          mkdir -p "$(dirname "$SKIP")"; : > "$SKIP"
+        fi
+      fi ;;
+  esac
+fi
+
 # Node.js: the copy bundled with the app first (one build for Apple Silicon, one for Intel).
 # Clearing the download "quarantine" flag (the user has just approved this app) keeps macOS from asking again.
 case "$(uname -m)" in arm64) BUNDLED="$RUNTIME/node-arm64" ;; *) BUNDLED="$RUNTIME/node-x64" ;; esac
@@ -52,6 +79,7 @@ fi
 
 # The window: the app's own native window (hubwindow, in the packaged app) when present; otherwise launcher.js opens a
 # browser app window. LAUNCHER_NO_WINDOW=1 (tests, headless) skips every window.
+export HUB_OWNER_PID=$$       # the hub tells the app to reopen itself after installing an update (see the end of this script and hubwindow)
 HELPER="$APP/Contents/MacOS/hubwindow"
 if [ -x "$HELPER" ] && [ -z "$LAUNCHER_NO_WINDOW" ]; then
   OUT="$(LAUNCHER_NO_WINDOW=1 "$NODE" launcher.js 2>&1)" || { show "$OUT"; exit 1; }
@@ -72,3 +100,6 @@ while [ "$MISSES" -lt 3 ]; do
   sleep 2
   if /usr/bin/curl -s -m 2 -o /dev/null "http://127.0.0.1:$PORT/info"; then MISSES=0; else MISSES=$((MISSES + 1)); fi
 done
+# An update was installed: the hub has stopped, so open the new copy of the app (the native window does the same itself).
+MARKER="${TMPDIR:-/tmp}"; MARKER="${MARKER%/}/mavlink-hub-relaunch"
+if [ -f "$MARKER" ]; then P="$(cat "$MARKER")"; rm -f "$MARKER"; sleep 1; [ -n "$P" ] && /usr/bin/open -n "$P"; fi

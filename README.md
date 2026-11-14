@@ -16,8 +16,8 @@ Jump to [Setting up a hub laptop](#setting-up-a-hub-laptop-windows).
 
 <table align="center">
 <tr>
-<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Windows.zip"><img src="docs/buttons/download-windows.svg" alt="Download for Windows" width="300"></a><br><sub>About 37 MB. Unzip it, then open <b>MAVLink Hub.bat</b></sub></td>
-<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Mac.zip"><img src="docs/buttons/download-mac.svg" alt="Download for Mac" width="300"></a><br><sub>About 88 MB, Apple Silicon and Intel. Unzip it, then open <b>MAVLink Hub.app</b></sub></td>
+<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Setup.exe"><img src="docs/buttons/download-windows.svg" alt="Download for Windows" width="300"></a><br><sub>An installer, about 37 MB. Run it; MAVLink Hub appears in your Start menu. (<a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Windows.zip">Portable ZIP</a>)</sub></td>
+<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub.dmg"><img src="docs/buttons/download-mac.svg" alt="Download for Mac" width="300"></a><br><sub>A disk image, about 88 MB, Apple Silicon and Intel. Open it and drag MAVLink Hub to Applications. (<a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Mac.zip">Portable ZIP</a>)</sub></td>
 </tr>
 </table>
 
@@ -45,13 +45,17 @@ Jump to [Setting up a hub laptop](#setting-up-a-hub-laptop-windows).
 The hub laptop is the one computer that receives the telemetry. Everyone else just opens a
 web page on it. Allow about ten minutes the first time.
 
-### 1. Download and unzip
+### 1. Download and install
 
-Click **Download for Windows** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Windows.zip)), then
-unzip it somewhere you will keep it, for example `C:\MAVLink Hub`. Keep everything in the folder together.
-Nothing else needs installing: the folder carries its own copy of Node.js. (If your browser or Windows warns
-about the download, that is because it is a ZIP of scripts from a small project; see the checksums
-below if you want to verify it.)
+Click **Download for Windows** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Setup.exe))
+and run **MAVLink-Hub-Setup.exe**. It installs MAVLink Hub for your Windows account (no administrator password), adds
+Start menu and Desktop shortcuts and an entry in *Settings → Apps*, and offers to open it. Nothing else needs installing:
+Node.js is included. If Windows SmartScreen says it protected your PC, click **More info → Run anyway** (the installer
+is not code-signed; see the checksums below if you want to verify it). To remove it, use *Settings → Apps → MAVLink Hub*;
+it asks whether to keep your saved maps and settings.
+
+Prefer no installer? The [portable ZIP](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Windows.zip)
+unzips anywhere (for example `C:\MAVLink Hub`) and runs from there with **MAVLink Hub.bat**.
 
 ### 2. Start it for the first time
 
@@ -80,9 +84,10 @@ below if you want to verify it.)
 
 Same idea, with a Mac app instead of the batch file.
 
-1. Click **Download for Mac** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Mac.zip)) and unzip it.
-   It works on both Apple Silicon and Intel Macs. Everything, including Node.js, is inside the one app, so
-   drag **MAVLink Hub.app** anywhere you like, for example Applications.
+1. Click **Download for Mac** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub.dmg)),
+   open **MAVLink-Hub.dmg** and drag **MAVLink Hub** onto the **Applications** folder beside it. It works on both Apple
+   Silicon and Intel Macs, and everything, including Node.js, is inside the one app. (Run it from the disk image or Downloads
+   instead and it offers to move itself to Applications. The [portable ZIP](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Mac.zip) holds the same app.)
 2. Double-click **MAVLink Hub.app**. The first time, macOS may refuse because it was downloaded: right-click the
    app and choose **Open**, then **Open** again. If it still refuses, open *System Settings → Privacy & Security*
    and click **Open Anyway**.
@@ -149,9 +154,16 @@ over the packets; close them there, or give the hub a different `UDP_PORT` (see 
 
 ### Updating
 
-Download the new ZIP and replace the old app (on a Mac, drag the new **MAVLink Hub.app** over the old one; on Windows,
-unzip next to the old folder and delete it). Saved maps, airspace data, settings and `hub.env` are kept in the saved-data
-folder (see *Where saved maps and airspace live*), so nothing is lost. If you use Git, `git pull`.
+The MAVLink Hub window has an **Updates** card. It checks GitHub for a newer release when the window opens (and whenever you press
+**Check for updates**); if there is one it shows what changed and a **Download and install** button. The hub downloads the
+release for your computer, checks it against the release's published SHA-256 checksum, closes itself, swaps in the new version
+and reopens, in about a minute. Saved maps, airspace data and settings are kept in the saved-data folder (see *Where saved maps
+and airspace live*), and `hub.env` is never overwritten, so nothing is lost. Do not update during a flight: the hub stops while it
+installs.
+
+It can only update the installed app. A copy run from a Git checkout is told about the new version and given a link; there,
+`git pull`. On a Mac the app must be somewhere it can write to (Applications). Set `UPDATE_CHECK=off` in `hub.env` to turn the
+checking off. The only thing sent is the request to GitHub's public releases API.
 
 ### Troubleshooting
 
@@ -231,6 +243,7 @@ set them as environment variables, which take precedence.
 | `DATA_DIR` | per-user app folder | Where saved maps (`cache/`) and `settings.json` are kept |
 | `TILE_STREET_URL` | OpenStreetMap | Street tile template, e.g. `https://example.com/{z}/{x}/{y}.png` |
 | `TILE_SAT_URL` | Esri World Imagery | Satellite tile template; note Esri's order is `{z}/{y}/{x}` |
+| `UPDATE_CHECK` | on | `off` stops the hub checking GitHub for new versions |
 | `TILE_TERRAIN_URL` | AWS Terrain Tiles (Terrarium) | Elevation tile template for the 3D Vision tab |
 
 Public tile servers ask for modest use, which is why bulk downloads are limited and
@@ -444,7 +457,8 @@ use a download whose SHA-256 does not match nodejs.org's published list. The off
 untouched, so their signatures stay valid (the Mac package holds one for Apple Silicon and one for Intel; the
 launcher picks the right one). `dist/SHA256SUMS.txt` lists the checksum of each ZIP. Needs `zip`, `unzip` and `tar`.
 
-To publish a version, push a tag; a GitHub Action builds the packages and attaches them to a release, which is what
+The Windows installer is built with [NSIS](https://nsis.sourceforge.io) (`brew install makensis`) and the Mac disk image with `hdiutil`,
+so a full build runs on a Mac; elsewhere `--no-installers` makes just the ZIPs. To publish a version, push a tag; a GitHub Action builds the packages and attaches them to a release, which is what
 the download buttons point at:
 
 ```bash
