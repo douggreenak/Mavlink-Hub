@@ -54,7 +54,7 @@ final class Host: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigatio
         guard let self = self else { return }
         if (resp as? HTTPURLResponse)?.statusCode == 200 { self.misses = 0 } else { self.misses += 1 }
         // After an update the hub stops on purpose; the marker file says to close at once and reopen the new copy.
-        if self.misses >= 3 || (self.misses >= 1 && FileManager.default.fileExists(atPath: relaunchMarker)) { NSApp.terminate(nil) }
+        if self.misses >= 3 || (self.misses >= 1 && FileManager.default.fileExists(atPath: self.relaunchMarker)) { NSApp.terminate(nil) }
       }
     }.resume()
   }
