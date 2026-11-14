@@ -88,10 +88,13 @@ async function downloadTo(url, file, { onProgress, ...o } = {}) {
 
 // ---- Windows: the helper that does the swap once nothing is using the files ----
 const WINDOWS_HELPER = `# Applies a MAVLink Hub update. Started (hidden) by the hub itself; it waits for the hub and its window to close first,
-# then runs the same installer people install from, silently, over this copy.
+# then runs the same installer people install from, silently, over this copy. Everything it does is logged to update.log next to the installer.
 param([string]$Setup, [string]$Dest, [int]$HubPid, [int]$OwnerPid)
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-$script:step = 0; $script:msg = 'Installing the update...'; $script:form = $null
+$script:step = 0; $script:base = 'Installing the update'; $script:form = $null; $script:t0 = Get-Date
+$Log = Join-Path (Split-Path -Parent $Setup) 'update.log'
+function Log([string]$m) { try { Add-Content -Path $Log -Value ((Get-Date -Format 'HH:mm:ss.fff') + '  ' + $m) } catch { } }
+Log ('helper started; setup=' + $Setup + ' dest=' + $Dest + ' hub=' + $HubPid + ' window=' + $OwnerPid)
 # The same turning ring of dots as the app's start-up screen, so there is something to look at while the installer runs.
 function Show-Spinner {
   $f = New-Object System.Windows.Forms.Form
@@ -107,27 +110,44 @@ function Show-Spinner {
       $b = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($a, 47, 128, 237))
       $g.FillEllipse($b, $cx + [Math]::Sin($r) * 29 - 5, $cy - [Math]::Cos($r) * 29 - 5, 10, 10); $b.Dispose()
     }
+    $text = $script:base + '... ' + [int]((Get-Date) - $script:t0).TotalSeconds + ' s'
     $font = New-Object System.Drawing.Font('Segoe UI', 11); $br = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(85, 96, 112))
-    $w = $g.MeasureString($script:msg, $font).Width; $g.DrawString($script:msg, $font, $br, $cx - $w / 2, $cy + 52); $font.Dispose(); $br.Dispose()
+    $w = $g.MeasureString($text, $font).Width; $g.DrawString($text, $font, $br, $cx - $w / 2, $cy + 52); $font.Dispose(); $br.Dispose()
   })
   $script:form = $f; $f.Show(); $f.Refresh()
 }
 function Tick { $script:step = ($script:step + 1) % 12; if ($script:form) { $script:form.Invalidate(); [System.Windows.Forms.Application]::DoEvents() } }
-function Fail([string]$m) { if ($script:form) { $script:form.Close() }; [System.Windows.Forms.MessageBox]::Show($m, 'MAVLink Hub update', 'OK', 'Warning') | Out-Null; exit 1 }
-function Wait-Gone([int]$p, [int]$sec) { if ($p -le 0) { return }; try { Wait-Process -Id $p -Timeout $sec -ErrorAction Stop } catch { } }
-Wait-Gone $HubPid 30
-if ($OwnerPid -gt 0) { Start-Sleep -Milliseconds 800; Stop-Process -Id $OwnerPid -Force -ErrorAction SilentlyContinue; Wait-Gone $OwnerPid 15 }
-# /S = silent, /D= = install into this very folder (it must be the last argument and is not quoted)
+function Fail([string]$m) { Log ('FAILED: ' + $m); if ($script:form) { $script:form.Close() }; [System.Windows.Forms.MessageBox]::Show($m + [Environment]::NewLine + [Environment]::NewLine + 'Details: ' + $Log, 'MAVLink Hub update', 'OK', 'Warning') | Out-Null; exit 1 }
+# True once the process is gone; waits at most $sec seconds.
+function Wait-Gone([int]$p, [int]$sec) {
+  if ($p -le 0) { return $true }
+  try { Wait-Process -Id $p -Timeout $sec -ErrorAction Stop; return $true } catch { return -not (Get-Process -Id $p -ErrorAction SilentlyContinue) }
+}
+if (-not (Wait-Gone $HubPid 8)) { Log 'the hub did not exit by itself; stopping it'; Stop-Process -Id $HubPid -Force -ErrorAction SilentlyContinue }
+Log 'hub stopped'
+if ($OwnerPid -gt 0) { Start-Sleep -Milliseconds 500; Stop-Process -Id $OwnerPid -Force -ErrorAction SilentlyContinue; [void](Wait-Gone $OwnerPid 8) }
+Log 'app window closed'
 Show-Spinner
+# /S = silent, /D= = install into this very folder (it must be the last argument and is not quoted)
 $p = Start-Process -FilePath $Setup -ArgumentList "/S /D=$Dest" -PassThru
 $null = $p.Handle     # so the exit code is filled in
-while (-not $p.HasExited) { Tick; Start-Sleep -Milliseconds 70 }
+Log 'installer started'
+$limit = (Get-Date).AddMinutes(4)
+while (-not $p.HasExited) {
+  Tick
+  if ((Get-Date) -gt $limit) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; Fail 'The update took too long and was stopped. You can install it by hand from the MAVLink Hub download page.' }
+  Start-Sleep -Milliseconds 70
+}
+Log ('installer finished, exit code ' + $p.ExitCode)
 if ($null -ne $p.ExitCode -and $p.ExitCode -ne 0) { Fail 'The update could not be installed (is another program using the MAVLink Hub folder?). Close it and try again from the MAVLink Hub window.' }
 Remove-Item -Force $Setup -ErrorAction SilentlyContinue
-$script:msg = 'Starting MAVLink Hub...'; Tick
+$script:base = 'Starting MAVLink Hub'; Tick
 $app = Join-Path $Dest 'MAVLink Hub.exe'
 if (Test-Path $app) { Start-Process -FilePath $app -WorkingDirectory $Dest }
 else { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -WorkingDirectory $Dest -WindowStyle Hidden -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $Dest 'launcher.ps1') + '"') }
+Log 'app started; done'
+Start-Sleep -Milliseconds 1500
+if ($script:form) { $script:form.Close() }
 `;
 
 // ---- Mac: unpack beside the app, then swap the bundles. Running programs keep the files they already opened. ----
@@ -193,12 +213,15 @@ function createUpdater(o) {
     if (!ok(assets.pkg.browser_download_url) || !ok(assets.sums.browser_download_url)) throw new Error('The download address is not one this app trusts.');
     const file = path.join(dataDir, 'updates', assets.pkg.name);
     try {
+      const T0 = Date.now(), lap = (m) => console.log('[update] ' + m + ' (' + ((Date.now() - T0) / 1000).toFixed(1) + ' s)');
+      lap('downloading ' + assets.pkg.name + ' for ' + state.latest);
       change({ status: 'downloading', pct: 0, error: null });
       const want = parseSums(await readText(assets.sums.browser_download_url, { allowHttp }))[assets.pkg.name];
       if (!want) throw new Error('The release has no checksum for ' + assets.pkg.name);
       let tick = 0;
       const got = await downloadTo(assets.pkg.browser_download_url, file, { allowHttp, onProgress: (n, t) => { if (t && now() - tick > 250) { tick = now(); change({ pct: Math.min(99, Math.round(n / t * 100)) }); } } });
       if (got.sha256 !== want) { try { fs.unlinkSync(file); } catch (e) { /* gone */ } throw new Error('The download is damaged (its checksum does not match), so it was not installed.'); }
+      lap('downloaded ' + (got.bytes / 1048576).toFixed(1) + ' MB and checked its checksum');
       change({ status: 'installing', pct: 100 });
       if (how.kind === 'windows') {
         const script = path.join(dataDir, 'updates', 'apply-update.ps1');
@@ -211,6 +234,7 @@ function createUpdater(o) {
         try { fs.unlinkSync(file); } catch (e) { /* kept for the next try */ }
         fs.writeFileSync(marker, how.app);
       }
+      lap('handing over to the installer; the hub stops now');
       change({ status: 'restarting' });
       setTimeout(quit, 800);                       // the hub stops; the helper (Windows) or the Mac app brings the new version up
     } catch (e) { change({ status: 'available', pct: 0, error: e.message }); throw e; }

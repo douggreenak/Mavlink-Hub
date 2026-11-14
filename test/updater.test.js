@@ -108,6 +108,8 @@ test('Windows install: downloads the installer (through a redirect), checks the 
   assert.equal(fs.readFileSync(arg('-File'), 'utf8'), U.WINDOWS_HELPER);
   assert.match(U.WINDOWS_HELPER, /-ArgumentList "\/S \/D=\$Dest"/, 'the same installer, silently, into this very folder');
   assert.match(U.WINDOWS_HELPER, /launcher\.ps1/, 'and the app is opened again afterwards');
+  assert.match(U.WINDOWS_HELPER, /update\.log/, 'what it does is logged so a slow update can be diagnosed'); assert.match(U.WINDOWS_HELPER, /Stop-Process -Id \$HubPid -Force/, 'it does not wait long for a hub that will not leave');
+  assert.match(U.WINDOWS_HELPER, /AddMinutes\(4\)/, 'and it gives up on the installer after four minutes instead of hanging');
   assert.equal(log.quits, 0, 'not yet: the page gets a moment to show it');
   await until(() => log.quits === 1);
 });

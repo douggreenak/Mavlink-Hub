@@ -117,7 +117,7 @@ pre{margin:10px 0 0;max-height:190px;overflow:auto;background:var(--sh);border-r
  </section>
 </main>
 
-<div id="busy"><div id="busyspin"></div><h3 id="busyhead">Updating MAVLink Hub</h3><div class="meta" id="busytxt"></div></div>
+<div id="busy"><div id="busyspin"></div><h3 id="busyhead">Updating MAVLink Hub</h3><div class="meta" id="busytxt"></div><div class="meta" id="busyslow" style="display:none;margin-top:14px">Taking longer than it should? <a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest" target="_blank" rel="noopener">Get the installer from the download page</a>.</div></div>
 
 <div id="gone"><img src="/assets/icon.png" alt=""><h3 id="gonehead">The hub has stopped</h3><div class="meta" id="gonetxt">You can close this window. To start it again, open MAVLink Hub.</div></div>
 
@@ -173,8 +173,10 @@ function render(s){
 function makeSpinner(el){el.classList.add('sp');for(let k=0;k<12;k++){const i=document.createElement('i');i.style.transform='rotate('+k*30+'deg) translateY(-22px)';i.style.animationDelay=(-1+k/12)+'s';el.appendChild(i)}}
 makeSpinner($('busyspin'));
 // While an update downloads, installs and restarts, the whole window shows the same turning ring as the start-up screen.
+let busySince=0;
 function updBusy(u){
- const on=!!u&&['downloading','installing','restarting'].includes(u.status);$('busy').classList.toggle('show',on);if(!on)return;
+ const on=!!u&&['downloading','installing','restarting'].includes(u.status);$('busy').classList.toggle('show',on);if(!on){busySince=0;$('busyslow').style.display='none';return}
+ if(!busySince)busySince=Date.now();
  $('busyhead').textContent=u.status==='downloading'?'Downloading the update':u.status==='installing'?'Installing the update':'Restarting MAVLink Hub';
  $('busytxt').textContent=u.status==='downloading'?`Version ${u.latest} · ${u.pct}%`:u.status==='installing'?'This takes a moment. MAVLink Hub will reopen by itself.':'MAVLink Hub will reopen by itself in a few seconds.';
 }
@@ -201,7 +203,8 @@ $('upinstall').onclick=()=>{
 };
 const es=new EventSource('/launcher/stream');
 es.onmessage=e=>render(JSON.parse(e.data));
-es.onerror=()=>{const upd=cur&&cur.update&&['downloading','installing','restarting'].includes(cur.update.status);if(upd){$('busy').classList.add('show');$('busyhead').textContent='Restarting MAVLink Hub';$('busytxt').textContent='MAVLink Hub will reopen by itself in a few seconds.';return}$('pill').className='pill off';$('pilltxt').textContent='Stopped';$('gone').classList.add('show');$('gonehead').textContent=stopping?'The hub has been stopped':'The hub has stopped';$('lstate').textContent='Stopped'};
+setInterval(()=>{if(busySince&&Date.now()-busySince>75000)$('busyslow').style.display='block'},2000);
+es.onerror=()=>{const upd=cur&&cur.update&&['downloading','installing','restarting'].includes(cur.update.status);if(upd){if(!busySince)busySince=Date.now();$('busy').classList.add('show');$('busyhead').textContent='Restarting MAVLink Hub';$('busytxt').textContent='MAVLink Hub will reopen by itself in a few seconds.';return}$('pill').className='pill off';$('pilltxt').textContent='Stopped';$('gone').classList.add('show');$('gonehead').textContent=stopping?'The hub has been stopped':'The hub has stopped';$('lstate').textContent='Stopped'};
 $('opendash').onclick=()=>api('/launcher/open',{target:'dashboard'});
 $('openmaps').onclick=()=>api('/launcher/open',{target:'maps'});
 $('openair').onclick=()=>api('/launcher/open',{target:'airspace'});

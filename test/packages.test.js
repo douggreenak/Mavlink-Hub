@@ -235,6 +235,8 @@ test('the Windows installer script: per-user, shortcuts that start the launcher 
   assert.match(nsi, /MessageBox MB_YESNO\|MB_DEFBUTTON2 "Also delete your saved maps[^\n]*IDNO keep/, 'data is kept by default');
   assert.match(nsi, /Section "Uninstall"[\s\S]*RMDir \/r "\$INSTDIR"/);
   assert.ok(!/\$_\./.test(nsi.replace(/\$\$_/g, '')), 'PowerShell variables are escaped for NSIS');
+  assert.match(nsi, /IfSilent skipStop[\s\S]*taskkill \/F \/IM "MAVLink Hub\.exe"[\s\S]*skipStop:/, 'an in-app update skips the cleanup (the app already did it); a manual install does it with fast commands');
+  assert.ok(!/Get-CimInstance/.test(nsi), 'no slow WMI query');
 });
 
 test('a release has one download per system, and the in-app updater downloads those same files', () => {
