@@ -89,8 +89,7 @@ pre{margin:10px 0 0;max-height:190px;overflow:auto;background:var(--sh);border-r
 
  <section class="card">
   <h2>This hub</h2>
-  <div class="row"><label class="switch grow"><input type="checkbox" id="stoponclose"><span>Stop the hub when I close this window</span></label><button class="danger" id="stop">Stop the hub</button></div>
-  <div class="meta" style="margin-top:6px" id="closenote">Off: the hub keeps running if you close this window, so a flight is never cut short by accident. Open MAVLink Hub again to bring the window back.</div>
+  <div class="row"><div class="grow">Closing this window stops the hub.</div><button class="danger" id="stop">Stop the hub</button></div>
   <div class="foot" id="dir"></div>
  </section>
 </main>
@@ -142,8 +141,6 @@ function render(s){
  const f=s.testFlight.running;$('flight').textContent=f?'Stop test flight':'Start test flight';$('profile').disabled=f;
  $('flightnote').textContent=f?`Test flight running (${s.testFlight.profile}). Open the dashboard to watch it.`:'A test flight sends a simulated INAV flight to this hub.';
  $('showlog').style.display=s.hasLog?'':'none';
- $('stoponclose').checked=s.prefs.stopOnClose;
- $('closenote').textContent=s.prefs.stopOnClose?'On: closing this window stops the hub.':'Off: the hub keeps running if you close this window, so a flight is never cut short by accident. Open MAVLink Hub again to bring the window back.';
  $('dir').textContent='Saved maps and settings: '+s.dataDir;
 }
 const es=new EventSource('/launcher/stream');
@@ -155,7 +152,6 @@ $('openair').onclick=()=>api('/launcher/open',{target:'airspace'});
 $('showlog').onclick=async()=>{const p=$('log');if(p.style.display==='block'){p.style.display='none';$('showlog').textContent='Show log';return}
  p.textContent=await fetch('/launcher/log').then(r=>r.text());p.style.display='block';p.scrollTop=p.scrollHeight;$('showlog').textContent='Hide log'};
 $('flight').onclick=()=>api('/launcher/testflight',cur&&cur.testFlight.running?{action:'stop'}:{action:'start',profile:$('profile').value});
-$('stoponclose').onchange=e=>api('/launcher/prefs',{stopOnClose:e.target.checked});
 $('stop').onclick=()=>{if(!confirm('Stop the hub? Anyone watching the dashboard will lose the live data.'))return;stopping=true;api('/launcher/stop')};
 </script>
 </body></html>

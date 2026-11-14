@@ -98,8 +98,17 @@ function Show-Window([int]$port) {
   } catch { return $false }
 }
 
+# Closing the window stops the hub, so it is never left running in the background. (If this script is killed instead, the
+# window's connection drops and the hub stops itself a few seconds later.)
+function Stop-Hub([int]$port) {
+  try {
+    Invoke-WebRequest -Uri "http://localhost:$port/launcher/stop" -Method Post -UseBasicParsing -TimeoutSec 3 -Body '{}' -ContentType 'application/json' `
+      -Headers @{ 'X-Launcher' = '1'; 'Origin' = "http://localhost:$port" } | Out-Null
+  } catch { }
+}
+
 $native = Test-Path (Join-Path $webview 'Microsoft.Web.WebView2.WinForms.dll')
 $r = Start-Hub $native
 if ($r.code -ne 0) { Say $r.text; exit 1 }
-if ($native -and $r.port -and (Show-Window $r.port)) { exit 0 }
+if ($native -and $r.port -and (Show-Window $r.port)) { Stop-Hub $r.port; exit 0 }
 if ($native) { [void](Start-Hub $false) }     # the window could not be shown: open the browser app window instead

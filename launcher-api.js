@@ -38,9 +38,8 @@ function osOpen(kind, target) {
 
 function createLauncherApi(o) {
   const { dir, page, info, quit, now = Date.now, graceMs = 8000, open = osOpen, profiles = [] } = o;
-  const clients = new Set(), prefsFile = path.join(dir, 'launcher.json');
-  let prefs = { stopOnClose: false }, timer = null, graceT = null, everConnected = false, flight = null;
-  try { prefs = { ...prefs, ...JSON.parse(fs.readFileSync(prefsFile, 'utf8')) }; } catch (e) { /* first run */ }
+  const clients = new Set();
+  let timer = null, graceT = null, everConnected = false, flight = null;
   const rate = { t: now(), packets: 0, bytes: 0, pps: 0, bps: 0 };
   const spawnSim = o.spawnSim || ((profile, udpPort) => spawn(process.execPath, [path.join(__dirname, 'sim', 'inav-sim.js'), '--profile', profile, '--port', String(udpPort)], { stdio: 'ignore', windowsHide: true }));
 
@@ -51,7 +50,7 @@ function createLauncherApi(o) {
       version: i.version, uptimeS: Math.round((t - i.startedAt) / 1000), webPort: i.webPort, udpPort: i.udpPort, urls: i.urls,
       telemetry: { packets: s.packets, bytes: s.bytes, pps: +rate.pps.toFixed(1), bps: Math.round(rate.bps), lastAgoMs: s.last ? t - s.last : null },
       viewers: i.viewers, dataDir: i.dataDir, airspaceDir: i.airspaceDir, hasLog: !!i.logFile,
-      testFlight: { running: !!flight, profile: flight ? flight.profile : null }, profiles, prefs,
+      testFlight: { running: !!flight, profile: flight ? flight.profile : null }, profiles,
     };
   }
   const json = (res, code, o2) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o2)); };
@@ -61,8 +60,10 @@ function createLauncherApi(o) {
   }
   const push = () => { for (const c of clients) c.write(`data: ${JSON.stringify(snapshot(c._port))}\n\n`); };
   function maybeQuit() {
-    if (!prefs.stopOnClose || !everConnected || clients.size) return;
-    clearTimeout(graceT); graceT = setTimeout(() => { if (prefs.stopOnClose && !clients.size) quit(); }, graceMs);
+    // Closing the window stops the hub (after a short grace so a reload or a second window opening does not). A hub that no
+    // window has ever connected to (started by hand, or with LAUNCHER_NO_WINDOW) is left alone.
+    if (!everConnected || clients.size) return;
+    clearTimeout(graceT); graceT = setTimeout(() => { if (!clients.size) quit(); }, graceMs);
   }
 
   function handle(req, res, url, qs) {
@@ -107,11 +108,6 @@ function createLauncherApi(o) {
         child.on('error', () => { if (flight && flight.child === child) { flight = null; push(); } });
         push(); return json(res, 200, { ok: true });
       }
-      if (url === '/launcher/prefs') {
-        if (typeof body.stopOnClose === 'boolean') prefs.stopOnClose = body.stopOnClose;
-        try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(prefsFile, JSON.stringify(prefs, null, 2)); } catch (e) { /* keep it for this session */ }
-        push(); return json(res, 200, { ok: true, prefs });
-      }
       if (url === '/launcher/stop') { json(res, 200, { ok: true }); setTimeout(quit, 150); return; }
       json(res, 404, { error: 'Not found' });
     });
@@ -123,7 +119,7 @@ function createLauncherApi(o) {
     for (const c of clients) c.destroy(); clients.clear();
     if (flight) { try { flight.child.kill(); } catch (e) { /* already gone */ } flight = null; }
   }
-  return { handle, shutdown, snapshot, prefs: () => prefs, testFlightRunning: () => !!flight };
+  return { handle, shutdown, snapshot, testFlightRunning: () => !!flight };
 }
 
 module.exports = { createLauncherApi, guard, osOpen, LOOPBACK };

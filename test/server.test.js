@@ -24,6 +24,7 @@ before(async () => {
   process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-e2e-'));
   process.env.TILE_STREET_URL = `http://127.0.0.1:${originPort}/{z}/{x}/{y}.png`;
   process.env.TILE_SAT_URL = `http://127.0.0.1:${originPort}/redir/{z}/{y}/{x}`;
+  process.env.TILE_TERRAIN_URL = `http://127.0.0.1:${originPort}/dem/{z}/{x}/{y}.png`;
   process.env.MAX_TILES = '40';
   S = require('../server.js');
   hub = await S.start({ udpPort: 0, webPort: 0, host: '127.0.0.1', migrate: false });
@@ -130,6 +131,18 @@ test('tiles are fetched once, cached on disk and served from cache afterwards', 
   const r2 = await get('/tiles/street/1/0/1');
   assert.ok(r2.body.equals(PNG));
   assert.equal(hits['/1/0/1.png'], 1, 'second request did not touch the origin');
+});
+
+test('terrain (elevation) tiles are cached on disk like map tiles and can be planned for download', async () => {
+  const r1 = await get('/tiles/terrain/12/367/1070');
+  assert.equal(r1.status, 200);
+  assert.equal(r1.headers['content-type'], 'image/png');
+  assert.equal(hits['/dem/12/367/1070.png'], 1);
+  assert.ok(fs.existsSync(path.join(process.env.DATA_DIR, 'cache', 'tiles', 'terrain', '12', '367', '1070')));
+  await get('/tiles/terrain/12/367/1070');
+  assert.equal(hits['/dem/12/367/1070.png'], 1, 'second request came from disk');
+  const p = await getJSON('/precache/plan?layer=terrain&w=-147.8&e=-147.6&s=64.8&n=64.9&z0=12&z1=12');
+  assert.ok(p.total >= 1 && p.missing === p.total - 1, 'the saved tile counts as already downloaded');
 });
 
 test('tile download follows redirects and uses the layer\'s own content type', async () => {

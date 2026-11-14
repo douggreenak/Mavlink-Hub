@@ -57,7 +57,7 @@ below if you want to verify it.)
 
 1. Double-click **MAVLink Hub.bat**. If Windows SmartScreen says it protected your PC,
    click **More info → Run anyway**; the file is a plain script you can open in Notepad.
-2. The hub starts quietly in the background (there is no black console window) and the
+2. The hub starts quietly (there is no black console window; it stops when you close the window) and the
    **MAVLink Hub** window opens, showing whether the aircraft is connected, the addresses
    for phones, and the buttons you need. See [The launcher window](#the-launcher-window).
 3. The first time, Windows Defender Firewall asks whether to allow **Node.js** to
@@ -167,7 +167,7 @@ The hub's own messages are in `%APPDATA%\MAVLink Hub\hub.log`.
 
 ## The launcher window
 
-Opening MAVLink Hub starts the hub in the background if it is not already running, then shows its control
+Opening MAVLink Hub starts the hub if it is not already running, then shows its control
 window. Open it again at any time: it finds the running hub and just shows the window, so you never start two.
 
 <table>
@@ -185,9 +185,8 @@ window. Open it again at any time: it finds the running hub and just shows the w
 - **Tools.** Open the saved-maps folder or the folder for your own airspace files, show the hub's log, and start a
   **test flight**: a simulated INAV flight (with or without GPS, airspeed or battery sensing, and so on) sent to
   this hub, so you can try everything with no aircraft.
-- **This hub.** **Stop the hub** quits it. The switch *Stop the hub when I close this window* is off by default, so
-  closing the window never cuts a flight short; the hub keeps running and you can bring the window back. Turn it on
-  if you would rather closing the window stop everything.
+- **This hub.** **Stop the hub** quits it. Closing the window (or quitting the app) also stops the hub, so nothing is
+  left running in the background; open MAVLink Hub again to start it. Take care not to close it during a flight.
 
 <img src="docs/screenshots/launcher-stopped.jpg" alt="The window after the hub has been stopped">
 
@@ -195,7 +194,7 @@ window. Open it again at any time: it finds the running hub and just shows the w
 
 **How it works.** The window is a web page served by the hub itself (`launcher.html`). In the downloads it is shown in the
 app's own window: a native window on the Mac (its own Dock icon, name and menu; closing it or quitting the app stops the hub),
-and a WebView2 window on Windows (the Edge engine that comes with Windows 10 and 11; closing it leaves the hub running).
+and a WebView2 window on Windows (the Edge engine that comes with Windows 10 and 11; closing it stops the hub).
 If that is not possible it falls back to an app-style Edge, Chrome, Brave or Chromium window (with its own small profile, so
 your normal browser is untouched), or your default browser. A short script, `launcher.js`, does the starting;
 `MAVLink Hub.bat` (with `launcher.ps1`) and `MAVLink Hub.app` just check that Node.js is available, run it, show the window,
@@ -232,6 +231,7 @@ set them as environment variables, which take precedence.
 | `DATA_DIR` | per-user app folder | Where saved maps (`cache/`) and `settings.json` are kept |
 | `TILE_STREET_URL` | OpenStreetMap | Street tile template, e.g. `https://example.com/{z}/{x}/{y}.png` |
 | `TILE_SAT_URL` | Esri World Imagery | Satellite tile template; note Esri's order is `{z}/{y}/{x}` |
+| `TILE_TERRAIN_URL` | AWS Terrain Tiles (Terrarium) | Elevation tile template for the 3D Vision tab |
 
 Public tile servers ask for modest use, which is why bulk downloads are limited and
 paced. Point the two URL variables at your own tile source to lift that.
@@ -288,6 +288,12 @@ bulk-download from (your own, or a paid provider) and then lift the limit.
   flight statistics, RC channels. *Edit tiles* hides what you do not need; the choice
   is stored on the hub so every screen matches.
 - **Map**: live track with a follow mode and a street/satellite toggle, a predicted path, and airspace layers with ceiling numbers (below).
+- **3D Vision**: a Garmin-style synthetic vision view (3D aircraft, terrain, flight-path ribbon and a flight-display
+  overlay) with chase, cockpit and orbit cameras. The terrain is real elevation data from the free
+  [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (USGS 3DEP, about 10 m, in the US including
+  Alaska; SRTM and other public data elsewhere). The hub downloads each tile once and keeps it with the map tiles, so it
+  works without internet afterwards. To have an area ready before a trip with no internet, open *Offline*, choose
+  *Terrain (3D)*, frame the area and download. Without terrain data the ground is drawn flat.
 - **Offline**: frame an area on the map, pick Overview, Standard or Detailed (each shows its
   size before you commit), and download it. Saved areas show in green. To free space, delete
   the tiles inside the frame at the chosen detail, or everything saved for a layer.

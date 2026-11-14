@@ -6,7 +6,7 @@
 //   UDP_PORT (14550)   WEB_PORT (8080)   MAX_TILES (500 tiles per download; 0 = no limit)
 //   DATA_DIR            - where cache/ and settings.json live (default: the per-user app folder,
 //                         %APPDATA%\MAVLink Hub on Windows, ~/Library/Application Support/MAVLink Hub on a Mac)
-//   TILE_STREET_URL / TILE_SAT_URL  - your own tile source, e.g. https://example.com/{z}/{x}/{y}.png
+//   TILE_STREET_URL / TILE_SAT_URL / TILE_TERRAIN_URL  - your own tile source, e.g. https://example.com/{z}/{x}/{y}.png
 //   AIRSPACE (on)       - "off" stops the hub fetching airspace data (saved data and your own files still work)
 //   AIRSPACE_MAX_FLOOR_FT (400) - hide airspace whose floor is above this height, to keep the map readable
 const dgram = require('dgram'), http = require('http'), https = require('https'), fs = require('fs');
@@ -85,6 +85,9 @@ const fill = (tpl, z, x, y) => tpl.replace('{z}', z).replace('{x}', x).replace('
 const TILES = {
   street: { tpl: process.env.TILE_STREET_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', type: 'image/png' },
   sat: { tpl: process.env.TILE_SAT_URL || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', type: 'image/jpeg' },
+  // Elevation for the 3D view: free AWS Open Data "Terrain Tiles" (Terrarium PNG, height = R*256 + G + B/256 - 32768 m).
+  // Built from USGS 3DEP (about 10 m in the US, including Alaska), SRTM and other public datasets. No key needed.
+  terrain: { tpl: process.env.TILE_TERRAIN_URL || 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', type: 'image/png' },
 };
 const tileUrl = (l, z, x, y) => fill(TILES[l].tpl, z, x, y);
 const tileFile = (l, z, x, y) => path.join(CACHE, 'tiles', l, String(z), String(x), String(y));
@@ -215,7 +218,7 @@ function handle(req, res) {
     res.write(settingsEvent());
     viewers.add(res);
     req.on('close', () => viewers.delete(res));
-  } else if ((m = url.match(/^\/tiles\/(street|sat)\/(\d+)\/(\d+)\/(\d+)$/))) {
+  } else if ((m = url.match(/^\/tiles\/(street|sat|terrain)\/(\d+)\/(\d+)\/(\d+)$/))) {
     if (+m[2] > TILE_MAX_ZOOM) return res.writeHead(404).end();
     serveTile(m[1], m[2], m[3], m[4], res);
   } else if ((m = url.match(/^\/vendor\/(leaflet\.js|leaflet\.css|qrcode\.js|images\/[\w.-]+)$/))) {

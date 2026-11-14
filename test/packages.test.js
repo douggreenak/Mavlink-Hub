@@ -154,13 +154,11 @@ test('saved maps, airspace and settings go to the data folder and nothing is wri
     assert.equal((await fetchJSON(port, '/tiles/street/3/4/2')).status, 200);
     const air = JSON.parse((await fetchJSON(port, '/airspace?layers=controlled&w=-148.2&s=64.5&e=-147.2&n=65.1')).text);
     assert.ok(air.layers.controlled.features.length >= 3, 'airspace was fetched');
-    assert.equal((await fetchJSON(port, '/launcher/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Launcher': '1' }, body: JSON.stringify({ stopOnClose: true }) })).status, 200);
   } finally { hub.kill(); }
   await new Promise((r) => setTimeout(r, 300));
   assert.ok(fs.existsSync(path.join(dataDir, 'settings.json')), 'settings saved in the data folder');
   assert.ok(fs.existsSync(path.join(dataDir, 'cache', 'tiles', 'street', '3', '4', '2')), 'map tile saved in the data folder');
   assert.ok(fs.readdirSync(path.join(dataDir, 'airspace', 'cache', 'controlled')).length >= 1, 'airspace saved in the data folder');
-  assert.ok(fs.existsSync(path.join(dataDir, 'launcher.json')), 'launcher preferences saved in the data folder');
   assert.deepEqual(treeOf(appDir), before, 'not one file was added or changed inside the app');
   // an update: throw the old app away completely and install a fresh copy
   fs.rmSync(appDir, { recursive: true }); B.assemble({ platform: 'mac', outDir: appDir });
@@ -217,6 +215,7 @@ test('the Windows launcher uses the app window (WebView2) from runtime\\webview2
   for (const name of Object.values(B.WEBVIEW2.files)) if (name.endsWith('.dll') && !name.startsWith('WebView2Loader')) assert.ok(ps.includes(name), name + ' is loaded by launcher.ps1');
   assert.match(ps, /Start-Hub \$false/, 'falls back to the browser app window');
   assert.match(ps, /HUB_PORT=/);
+  assert.match(ps, /Stop-Hub \$r\.port/, 'closing the window stops the hub');
   assert.match(B.WEBVIEW2.sha256, /^[0-9a-f]{64}$/);
   const l = fs.readFileSync(path.join(ROOT, 'launcher.js'), 'utf8'); assert.match(l, /HUB_PORT=/);
 });

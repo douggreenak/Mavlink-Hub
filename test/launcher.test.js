@@ -75,7 +75,7 @@ test('live status: version, ports, addresses, test-flight profiles, and traffic 
   const a = s.last();
   assert.equal(a.version, require('../package.json').version); assert.equal(a.webPort, port); assert.equal(a.udpPort, hub.udp.address().port);
   assert.ok(Array.isArray(a.urls) && a.urls.every((u) => u.endsWith(':' + port)));
-  assert.equal(a.telemetry.packets, 0); assert.equal(a.telemetry.lastAgoMs, null); assert.equal(a.viewers, 0); assert.equal(a.prefs.stopOnClose, false); assert.equal(a.testFlight.running, false);
+  assert.equal(a.telemetry.packets, 0); assert.equal(a.telemetry.lastAgoMs, null); assert.equal(a.viewers, 0); assert.equal(a.testFlight.running, false);
   assert.ok(a.profiles.some((p) => p.name === 'full') && a.profiles.some((p) => p.name === 'minimal' && p.description));
   assert.equal(a.dataDir, DIR); assert.equal(a.hasLog, true);
   const sock = dgram.createSocket('udp4');
@@ -89,7 +89,7 @@ test('live status: version, ports, addresses, test-flight profiles, and traffic 
 test('viewers counts dashboards watching, not the launcher window itself', async () => {
   const s = stream(); await until(() => s.events.length);
   const dash = http.get(base + '/stream', { agent: false }); await sleep(150);
-  await until(() => (s.last().viewers === 1) || (post('/launcher/prefs', {}).then(() => false)), 4000);
+  await until(() => s.last().viewers === 1 || sleep(50).then(() => false), 4000);
   assert.equal(s.last().viewers, 1);
   dash.destroy(); s.close();
 });
@@ -131,23 +131,18 @@ test('log: the last 200 lines, or a plain note when the hub was not started by t
 });
 
 test('stop button: the hub quits, after answering', async () => {
-  quits = 0; const r = await post('/launcher/stop', {}); assert.equal(r.ok, true);
+  await sleep(400); quits = 0;                                                                  // earlier tests' closed windows have finished their grace period
+  const r = await post('/launcher/stop', {}); assert.equal(r.ok, true);
   await until(() => quits === 1); await sleep(300); assert.equal(quits, 1, 'once');
 });
 
-test('stop-when-closed: off by default; when on, closing the window quits after a short grace, and reopening in time cancels it', async () => {
-  quits = 0;
-  const a = stream(); await until(() => a.events.length); a.close(); await sleep(400);
-  assert.equal(quits, 0, 'off: closing the window never stops the hub');
-  const p = await post('/launcher/prefs', { stopOnClose: true }); assert.equal(p.prefs.stopOnClose, true);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, 'launcher.json'), 'utf8')).stopOnClose, true, 'remembered across restarts');
-  const b = stream(); await until(() => b.events.length && b.last().prefs.stopOnClose); b.close(); await sleep(40);
-  const c = stream(); await until(() => c.events.length); await sleep(350);                    // reopened inside the grace period
+test('closing the window stops the hub after a short grace, and reopening in time cancels it', async () => {
+  await sleep(400); quits = 0;                                                                  // let earlier tests' windows finish closing
+  const a = stream(); await until(() => a.events.length); a.close(); await sleep(40);
+  const b = stream(); await until(() => b.events.length); await sleep(350);                     // reopened inside the grace period
   assert.equal(quits, 0, 'a reload does not stop the hub');
-  c.close(); await until(() => quits === 1, 2000); await sleep(300); assert.equal(quits, 1);
-  await post('/launcher/prefs', { stopOnClose: false });
-  const d = stream(); await until(() => d.events.length); d.close(); await sleep(400); assert.equal(quits, 1, 'turned off again');
-  assert.equal((await post('/launcher/prefs', { stopOnClose: 'yes' })).prefs.stopOnClose, false, 'only a real true/false is accepted');
+  b.close(); await until(() => quits === 1, 2000); await sleep(300); assert.equal(quits, 1, 'closing the window stopped the hub, once');
+  assert.equal((await post('/launcher/prefs', { stopOnClose: false })).status, 404, 'there is no longer a switch to turn this off');
 });
 
 test('the launcher page only uses element ids that exist (a typo would silently break a button)', () => {

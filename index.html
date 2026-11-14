@@ -203,7 +203,7 @@ button.chip.warn{background:var(--warn);color:var(--owarn)}
  </div>
 </div>
 <div id="maps" class="view">
- <div class="mrow"><button class="chip on" data-ml="street">Street</button><button class="chip" data-ml="sat">Satellite</button>
+ <div class="mrow"><button class="chip on" data-ml="street">Street</button><button class="chip" data-ml="sat">Satellite</button><button class="chip" data-ml="terrain">Terrain (3D)</button>
   <label class="chip"><input type="checkbox" id="omcov" checked> Show saved areas</label><span id="omzs" class="mute small"></span></div>
  <div id="omwrap"><div id="om"></div><div id="omframe"><span>Area to save</span></div></div>
  <div class="card"><h2>Save this area for offline use</h2>
@@ -550,10 +550,454 @@ function mapFrame(){
  updatePrediction(la,lo);
  if(follow)lm.panTo([la,lo],{animate:false});
 }
+// ---- 3D Vision: Garmin-style synthetic vision (WebGL scene + 2D flight display overlay) ----
+// World axes: x = east, y = up, z = north, metres from home. The aircraft model's nose points +z, right wing +x.
+const M4={ // column-major 4x4 helpers; every function writes into `o` and returns it
+ id(){const o=new Float32Array(16);o[0]=o[5]=o[10]=o[15]=1;return o},
+ mul(o,a,b){const r=new Float32Array(16);for(let c=0;c<4;c++)for(let i=0;i<4;i++)r[c*4+i]=a[i]*b[c*4]+a[4+i]*b[c*4+1]+a[8+i]*b[c*4+2]+a[12+i]*b[c*4+3];o.set(r);return o},
+ persp(o,fovy,asp,n,f){const t=1/Math.tan(fovy/2);o.fill(0);o[0]=-t/asp;/* x = east, y = up, z = north is left-handed: mirror the picture so east is on the right when facing north */o[5]=t;o[10]=(f+n)/(n-f);o[11]=-1;o[14]=2*f*n/(n-f);return o},
+ lookAt(o,e,c,u){
+  let zx=e[0]-c[0],zy=e[1]-c[1],zz=e[2]-c[2],l=Math.hypot(zx,zy,zz)||1;zx/=l;zy/=l;zz/=l;
+  let xx=u[1]*zz-u[2]*zy,xy=u[2]*zx-u[0]*zz,xz=u[0]*zy-u[1]*zx;l=Math.hypot(xx,xy,xz)||1;xx/=l;xy/=l;xz/=l;
+  const yx=zy*xz-zz*xy,yy=zz*xx-zx*xz,yz=zx*xy-zy*xx;
+  o[0]=xx;o[1]=yx;o[2]=zx;o[3]=0;o[4]=xy;o[5]=yy;o[6]=zy;o[7]=0;o[8]=xz;o[9]=yz;o[10]=zz;o[11]=0;
+  o[12]=-(xx*e[0]+xy*e[1]+xz*e[2]);o[13]=-(yx*e[0]+yy*e[1]+yz*e[2]);o[14]=-(zx*e[0]+zy*e[1]+zz*e[2]);o[15]=1;return o},
+ trans(o,a,v){o.set(a);o[12]=a[0]*v[0]+a[4]*v[1]+a[8]*v[2]+a[12];o[13]=a[1]*v[0]+a[5]*v[1]+a[9]*v[2]+a[13];o[14]=a[2]*v[0]+a[6]*v[1]+a[10]*v[2]+a[14];o[15]=a[3]*v[0]+a[7]*v[1]+a[11]*v[2]+a[15];return o},
+ scale(o,a,v){for(let i=0;i<4;i++){o[i]=a[i]*v[0];o[4+i]=a[4+i]*v[1];o[8+i]=a[8+i]*v[2];o[12+i]=a[12+i]}return o},
+ rotX(o,a,r){const c=Math.cos(r),s=Math.sin(r);return M4.mul(o,a,Float32Array.of(1,0,0,0,0,c,s,0,0,-s,c,0,0,0,0,1))},
+ rotY(o,a,r){const c=Math.cos(r),s=Math.sin(r);return M4.mul(o,a,Float32Array.of(c,0,-s,0,0,1,0,0,s,0,c,0,0,0,0,1))},
+ rotZ(o,a,r){const c=Math.cos(r),s=Math.sin(r);return M4.mul(o,a,Float32Array.of(c,s,0,0,-s,c,0,0,0,0,1,0,0,0,0,1))}
+};
+// ---- Real terrain: elevation tiles from the free AWS "Terrain Tiles" set (USGS 3DEP, SRTM and others) ----
+// The hub downloads each tile once and keeps it with the map tiles, so it works offline afterwards (see the Offline tab).
+// Tiles are Terrarium PNGs: height in metres = R*256 + G + B/256 - 32768. Zoom 12 is about 16 m per pixel at Fairbanks.
+const DEM_Z=12,DEM={t:new Map(),ver:0,ref:null,busy:0,fail:0,org:null,seen:0};
+function demLoad(x,y){
+ const k=x+'/'+y,old=DEM.t.get(k);
+ if(old&&!(old.s==='fail'&&performance.now()-old.at>30000))return;
+ const e={s:'load',d:null,at:0};DEM.t.set(k,e);DEM.busy++;
+ fetch('/tiles/terrain/'+DEM_Z+'/'+x+'/'+y).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.blob()})
+  .then(b=>createImageBitmap(b,{premultiplyAlpha:'none',colorSpaceConversion:'none'}))
+  .then(im=>{
+   const c=document.createElement('canvas');c.width=c.height=256;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(im,0,0);
+   const p=g.getImageData(0,0,256,256).data,d=new Float32Array(65536);
+   for(let i=0;i<65536;i++)d[i]=p[i*4]*256+p[i*4+1]+p[i*4+2]/256-32768;
+   e.d=d;e.s='ok';DEM.ver++})
+  .catch(()=>{e.s='fail';e.at=performance.now();DEM.fail++})
+  .then(()=>{DEM.busy--});
+}
+// Height above sea level at a point (bilinear between the four nearest samples), or null while its tile is not loaded.
+function demSample(lat,lon){
+ const n=2**DEM_Z,sn=Math.sin(lat*D2R),fx=(lon+180)/360*n*256-.5,fy=(.5-Math.log((1+sn)/(1-sn))/(4*Math.PI))*n*256-.5;
+ const x0=Math.floor(fx),y0=Math.floor(fy),ax=fx-x0,ay=fy-y0;let sum=0,wt=0;
+ for(let j=0;j<2;j++)for(let i=0;i<2;i++){
+  const x=x0+i,y=y0+j,t=DEM.t.get(Math.floor(x/256)+'/'+Math.floor(y/256));
+  if(!t||t.s!=='ok')continue;
+  const w=(i?ax:1-ax)*(j?ay:1-ay);sum+=w*t.d[(y-Math.floor(y/256)*256)*256+(x-Math.floor(x/256)*256)];wt+=w}
+ return wt>0?sum/wt:null;
+}
+// Keep the tiles around the aircraft and around home loaded; work out the ground height at home (the zero of the 3D world).
+function demUpdate(org,lat,lon){
+ const now=performance.now();if(now-DEM.seen<400)return;DEM.seen=now;
+ const ok=org.lat+','+org.lon;if(DEM.org!==ok){DEM.org=ok;DEM.ref=null;DEM.ver++}
+ const n=2**DEM_Z,tile=(la,lo)=>{const sn=Math.sin(la*D2R);return[Math.floor((lo+180)/360*n),Math.floor((.5-Math.log((1+sn)/(1-sn))/(4*Math.PI))*n)]};
+ for(const[la,lo]of[[lat,lon],[org.lat,org.lon]]){
+  const[tx,ty]=tile(la,lo);
+  for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){if(DEM.busy>=4)return;if(tx+i>=0&&tx+i<n&&ty+j>=0&&ty+j<n)demLoad(tx+i,ty+j)}}
+ if(DEM.ref==null){const r=demSample(org.lat,org.lon);if(r!=null){DEM.ref=r;DEM.ver++}}
+}
+function demStatus(){
+ if(DEM.ref!=null)return 'terrain: real elevation data';
+ if(DEM.busy)return 'loading terrain data…';
+ return DEM.fail?'no terrain data (the hub needs internet once, or save the area in Offline > Terrain)':'';
+}
+let v3dOrg=null; // home (or the first fix), the origin of the 3D world
+// Ground height in metres relative to home. The few hundred metres around home are levelled so the takeoff strip sits flat.
+function v3dElev(x, z) {
+  if(DEM.ref==null||!v3dOrg)return 0;
+  const e=demSample(v3dOrg.lat+z/111320,v3dOrg.lon+x/(111320*Math.cos(v3dOrg.lat*D2R)));
+  if(e==null)return 0;
+  return clamp((Math.hypot(x,z)-180)/240,0,1)*(e-DEM.ref);
+}
+// Mesh vertex layout: x,y,z, r,g,b, nx,ny,nz. Normals are flat per face, pointing away from `ref` (a point inside the solid).
+function v3dMesh(){
+ const a=[],m={a,
+  tri(p,q,r,c,ref){
+   const ux=q[0]-p[0],uy=q[1]-p[1],uz=q[2]-p[2],vx=r[0]-p[0],vy=r[1]-p[1],vz=r[2]-p[2];
+   let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const l=Math.hypot(nx,ny,nz)||1;nx/=l;ny/=l;nz/=l;
+   if(ref&&nx*((p[0]+q[0]+r[0])/3-ref[0])+ny*((p[1]+q[1]+r[1])/3-ref[1])+nz*((p[2]+q[2]+r[2])/3-ref[2])<0){nx=-nx;ny=-ny;nz=-nz}
+   for(const v of[p,q,r])a.push(v[0],v[1],v[2],c[0],c[1],c[2],nx,ny,nz)},
+  quad(p,q,r,s,c,ref){m.tri(p,q,r,c,ref);m.tri(p,r,s,c,ref)},
+  // a six-sided solid from 4 bottom corners then 4 top corners; cs = optional colour per face (bottom, top, then the four sides)
+  hex(P,c,cs){
+   const ref=[0,1,2].map(k=>P.reduce((s,v)=>s+v[k],0)/8),F=[[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
+   F.forEach((f,i)=>m.quad(P[f[0]],P[f[1]],P[f[2]],P[f[3]],(cs&&cs[i])||c,ref))},
+  box(x,y,z,sx,sy,sz,c){m.hex([[x-sx,y-sy,z-sz],[x+sx,y-sy,z-sz],[x+sx,y-sy,z+sz],[x-sx,y-sy,z+sz],[x-sx,y+sy,z-sz],[x+sx,y+sy,z-sz],[x+sx,y+sy,z+sz],[x-sx,y+sy,z+sz]],c)},
+  flat(p,q,r,s,c){m.quad(p,q,r,s,c,[p[0],p[1]-1,p[2]])}, // an upward-facing ground quad
+  f32(){return new Float32Array(a)}};
+ return m;
+}
+function v3dBuildPlane(){
+ const m=v3dMesh(),white=[.94,.95,.97],belly=[.72,.74,.78],blue=[.1,.36,.86],glass=[.2,.38,.55],red=[.95,.1,.1],green=[.1,.85,.25];
+ // fuselage: rings of [z, half-width, half-height, centre height]
+ const rings=[[-3.3,.06,.06,.3],[-2.4,.14,.17,.22],[-1.2,.3,.34,.05],[0,.42,.46,0],[1.2,.42,.45,0],[2.2,.33,.34,0],[3,.2,.2,0],[3.25,.1,.1,0]],n=12;
+ const ring=r=>Array.from({length:n},(_,k)=>{const t=k*2*Math.PI/n;return[r[1]*Math.cos(t),r[3]+r[2]*Math.sin(t),r[0]]});
+ for(let i=0;i<rings.length-1;i++){
+  const A=ring(rings[i]),B=ring(rings[i+1]),zm=(rings[i][0]+rings[i+1][0])/2,ref=[0,rings[i][3]/2+rings[i+1][3]/2,zm];
+  for(let k=0;k<n;k++){const k2=(k+1)%n,side=k===0||k===n-1||k===5||k===6,low=k>6&&k<11;
+   m.quad(A[k],A[k2],B[k2],B[k],side&&zm>-2.3&&zm<2.5?blue:low?belly:white,ref)}
+ }
+ // tinted canopy: upper half of an ellipsoid
+ const cc=[0,.38,.55],rx=.3,ry=.3,rz=.85,P=(la,lo)=>[cc[0]+rx*Math.cos(la)*Math.cos(lo),cc[1]+ry*Math.sin(la),cc[2]+rz*Math.cos(la)*Math.sin(lo)];
+ for(let i=0;i<5;i++)for(let k=0;k<10;k++){const a0=i*Math.PI/2/5,a1=(i+1)*Math.PI/2/5,b0=k*2*Math.PI/10,b1=(k+1)*2*Math.PI/10;
+  m.quad(P(a0,b0),P(a0,b1),P(a1,b1),P(a1,b0),glass,cc)}
+ for(const s of[-1,1]){ // tapered, dihedral wings with a coloured navigation light at each tip (left red, right green)
+  const lit=s<0?red:green,rl=[s*.38,.02,.95],rt=[s*.38,.02,-.55],tt=[s*4.2,.57,-.35],tl=[s*4.2,.57,.45],up=(p,t)=>[p[0],p[1]+t,p[2]];
+  m.hex([rl,rt,tt,tl,up(rl,.1),up(rt,.1),up(tt,.05),up(tl,.05)],white,[belly,white,white,white,lit,blue]);
+  m.box(s*4.25,.64,.05,.08,.06,.1,lit);
+  const sl=[s*.1,.27,-2.6],st=[s*.1,.27,-3.25],tt2=[s*1.7,.31,-3.3],tl2=[s*1.7,.31,-2.9]; // horizontal stabiliser
+  m.hex([sl,st,tt2,tl2,up(sl,.05),up(st,.05),up(tt2,.03),up(tl2,.03)],white,[belly,white,white,white,white,white]);
+ }
+ m.hex([[-.03,.3,-2.1],[-.03,.3,-3.3],[.03,.3,-3.3],[.03,.3,-2.1],[-.02,1.35,-3],[-.02,1.35,-3.35],[.02,1.35,-3.35],[.02,1.35,-3]],blue); // vertical fin
+ return m.f32();
+}
+function v3dBuildProp(){
+ const m=v3dMesh(),dark=[.12,.12,.14],yel=[1,.82,.1],sp=[.22,.22,.25],ap=[0,0,3.57];
+ const ring=Array.from({length:8},(_,k)=>[.17*Math.cos(k*Math.PI/4),.17*Math.sin(k*Math.PI/4),3.25]);
+ for(let k=0;k<8;k++)m.tri(ring[k],ring[(k+1)%8],ap,sp,[0,0,3.2]); // spinner cone
+ for(const s of[1,-1]){ // two blades, yellow safety tips
+  const seg=(y0,y1,c)=>m.hex([[-.07,s*y0,3.3],[.07,s*y0,3.3],[.07,s*y0,3.36],[-.07,s*y0,3.36],[-.05,s*y1,3.3],[.05,s*y1,3.3],[.05,s*y1,3.36],[-.05,s*y1,3.36]],c);
+  seg(.12,1,dark);seg(1,1.25,yel)}
+ return m.f32();
+}
+function v3dBuildRunway(){
+ const m=v3dMesh(),W=13,L=170,asphalt=[.16,.16,.18],white=[.92,.92,.9],yel=[.98,.8,.1],y0=.25,y1=.3,y2=.35,y3=.4;
+ const rect=(x0,x1,z0,z1,y,c)=>m.flat([x0,y,z0],[x1,y,z0],[x1,y,z1],[x0,y,z1],c);
+ rect(-W,W,-L,L,y0,asphalt);
+ rect(-W+.4,-W+.8,-L+4,L-4,y1,white);rect(W-.8,W-.4,-L+4,L-4,y1,white);
+ for(let z=-150;z<150;z+=24)if(Math.abs(z+6)>14)rect(-.25,.25,z,z+12,y1,white);
+ for(const s of[-1,1])for(let k=0;k<8;k++){const x=-8.75+k*2.5,za=s*(L-3),zb=s*(L-23);rect(x-.6,x+.6,Math.min(za,zb),Math.max(za,zb),y1,white)}
+ const disc=(r,y,c)=>{for(let k=0;k<20;k++){const a=k*2*Math.PI/20,b=(k+1)*2*Math.PI/20;m.tri([0,y,0],[r*Math.cos(a),y,r*Math.sin(a)],[r*Math.cos(b),y,r*Math.sin(b)],c,[0,y-1,0])}};
+ disc(6,y1+.02,yel);disc(5,y2,asphalt);
+ rect(-2.2,-1.5,-2.6,2.6,y3,yel);rect(1.5,2.2,-2.6,2.6,y3,yel);rect(-1.5,1.5,-.35,.35,y3,yel); // the H
+ return m.f32();
+}
+function v3dBuildShadow(){
+ const m=v3dMesh();for(let k=0;k<16;k++){const a=k*2*Math.PI/16,b=(k+1)*2*Math.PI/16;m.tri([0,0,0],[Math.sin(a),0,Math.cos(a)],[Math.sin(b),0,Math.cos(b)],[0,0,0],[0,-1,0])}
+ return m.f32();
+}
+const V3D_LOW=[.176,.416,.31],V3D_MID=[.455,.549,.231],V3D_HI=[.541,.427,.282]; // #2d6a4f, #748c3b, #8a6d48
+const V3D_RED=[.86,.1,.08],V3D_AMB=[.96,.7,.08];
+const v3dLerp=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+// Colour of one terrain vertex. Returns [colour, warning level 0/1/2] (1 = within 30 m of the aircraft's height, 2 = above it).
+function v3dTerrCol(h,mode,pa,x,z){
+ if(mode==='sat'){
+  const n=Math.sin(x*.031)*Math.sin(z*.027)*.5+Math.sin(x*.11+z*.07)*.3+Math.sin(x*.017-z*.043)*.2;
+  const c=h<150?v3dLerp([.2,.36,.16],[.42,.4,.24],clamp(h/150,0,1)):v3dLerp([.42,.4,.24],[.58,.55,.5],clamp((h-150)/450,0,1));
+  return[c.map(v=>Math.min(1,v*(1+n*.14))),0]}
+ const w=pa<8?0:h>=pa?2:h>=pa-30?1:0; // no warnings on the ground
+ if(mode==='wire')return[w===2?[.38,.05,.05]:w===1?[.38,.27,.03]:[.03,.06,.09],w];
+ const base=h<120?v3dLerp(V3D_LOW,V3D_MID,clamp(h/120,0,1)):h<500?v3dLerp(V3D_MID,V3D_HI,(h-120)/380):v3dLerp(V3D_HI,[.74,.72,.7],clamp((h-500)/700,0,1));
+ return[w===2?v3dLerp(base,V3D_RED,.85):w===1?v3dLerp(base,V3D_AMB,.8):base,w];
+}
+// A 36 x 36 quad mesh around the aircraft, snapped to a fixed grid so the lines do not swim as it moves.
+function v3dBuildTerrain(px,pz,planeAlt,mode){
+ const N=36,C=120,S=N+1,gx=Math.round(px/C)*C,gz=Math.round(pz/C)*C,e=C/2;
+ const hh=new Float32Array(S*S),cc=new Float32Array(S*S*3),ww=new Uint8Array(S*S),nn=new Float32Array(S*S*3);
+ for(let j=0;j<S;j++)for(let i=0;i<S;i++){
+  const x=gx+(i-N/2)*C,z=gz+(j-N/2)*C,k=j*S+i,h=v3dElev(x,z),[c,w]=v3dTerrCol(h,mode,planeAlt,x,z);
+  hh[k]=h;ww[k]=w;cc.set(c,k*3);
+  const dx=(v3dElev(x+e,z)-v3dElev(x-e,z))/C,dz=(v3dElev(x,z+e)-v3dElev(x,z-e))/C,l=Math.hypot(dx,1,dz);
+  nn[k*3]=-dx/l;nn[k*3+1]=1/l;nn[k*3+2]=-dz/l}
+ const tris=new Float32Array(N*N*6*9),lines=new Float32Array(N*S*4*9);let o=0,q=0;
+ const put=(arr,off,i,j,dy,lc)=>{const k=j*S+i;
+  arr[off]=gx+(i-N/2)*C;arr[off+1]=hh[k]+dy;arr[off+2]=gz+(j-N/2)*C;
+  const c=lc||cc.subarray(k*3,k*3+3);arr[off+3]=c[0];arr[off+4]=c[1];arr[off+5]=c[2];
+  arr[off+6]=nn[k*3];arr[off+7]=nn[k*3+1];arr[off+8]=nn[k*3+2];return off+9};
+ const lineCol=k=>ww[k]===2?V3D_RED:ww[k]===1?V3D_AMB:mode==='wire'?[.2,.9,.75]:mode==='svt'?[.45,1,.8]:[0,0,0];
+ for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+  o=put(tris,o,i,j,0);o=put(tris,o,i,j+1,0);o=put(tris,o,i+1,j+1,0);
+  o=put(tris,o,i,j,0);o=put(tris,o,i+1,j+1,0);o=put(tris,o,i+1,j,0)}
+ for(let j=0;j<S;j++)for(let i=0;i<S;i++){
+  if(i<N){q=put(lines,q,i,j,.25,lineCol(j*S+i));q=put(lines,q,i+1,j,.25,lineCol(j*S+i+1))}
+  if(j<N){q=put(lines,q,i,j,.25,lineCol(j*S+i));q=put(lines,q,i,j+1,.25,lineCol((j+1)*S+i))}}
+ return{tris,lines:lines.subarray(0,q)};
+}
+// A flat ribbon along the last 30 s of the flight path, fading from teal (old) to bright aqua (new).
+function v3dBuildRibbon(tr){
+ const m=v3dMesh();
+ for(let i=1;i<tr.length;i++){
+  const a=tr[i-1],b=tr[i],dx=b[0]-a[0],dz=b[2]-a[2],l=Math.hypot(dx,dz);if(l<.05)continue;
+  const nx=-dz/l*1.6,nz=dx/l*1.6,t=i/tr.length,c=v3dLerp([.08,.3,.4],[.3,.95,.9],t);
+  m.quad([a[0]-nx,a[1],a[2]-nz],[a[0]+nx,a[1],a[2]+nz],[b[0]+nx,b[1],b[2]+nz],[b[0]-nx,b[1],b[2]-nz],c,[a[0],a[1]-1,a[2]])}
+ return m.f32();
+}
+
+let v3dGL=null,v3dProgM=null,v3dProgS=null,v3dLoc={},v3dSLoc={},v3dBuf={},v3dTerrKey='';
+let v3dCam='chase',v3dTerr='svt',v3dHudOn=true,v3dTrailOn=true,v3dYaw=0,v3dPit=.2,v3dDist=22,v3dFov=1.05;
+let v3dPropAng=0,v3dTr=[],v3dOrgKey='',v3dTaws=0,v3dCH=0,v3dInfoT=0,v3dInfoS='',v3dDrag=null,v3dPinch=0;
+const V3D_CAMS=[['chase','Chase'],['cockpit','Cockpit'],['orbit','Orbit']],V3D_TERRS=[['svt','Garmin SVT'],['wire','Wireframe'],['sat','Satellite']];
+const v3dVS=`attribute vec3 aP,aC,aN;uniform mat4 uVP,uM;uniform vec3 uEye;uniform float uFa,uFb;
+varying vec3 vC,vN;varying float vF;
+void main(){vec4 w=uM*vec4(aP,1.);vN=(uM*vec4(aN,0.)).xyz;vC=aC;vF=smoothstep(uFa,uFb,length(w.xyz-uEye));gl_Position=uVP*w;}`;
+const v3dFS=`precision mediump float;varying vec3 vC,vN;varying float vF;uniform vec3 uFog;uniform float uLit,uAlpha;
+void main(){float d=max(dot(normalize(vN),normalize(vec3(.4,.8,.35))),0.);vec3 c=mix(vC,vC*(.42+.78*d),uLit);gl_FragColor=vec4(mix(c,uFog,vF),uAlpha);}`;
+const v3dSkyVS=`attribute vec2 aQ;uniform vec3 uF,uR,uU;uniform vec2 uT;varying vec3 vD;
+void main(){vD=uF+uR*aQ.x*uT.x+uU*aQ.y*uT.y;gl_Position=vec4(aQ,.9999,1.);}`;
+const v3dSkyFS=`precision mediump float;varying vec3 vD;uniform vec3 uHor,uZen;
+void main(){float t=normalize(vD).y;gl_FragColor=vec4(t<0.?uHor:mix(uHor,uZen,pow(t,.45)),1.);}`;
+const V3D_HOR=[.66,.79,.93],V3D_ZEN=[.14,.36,.72];
+
+function v3dResetCam(){
+ if(v3dCam==='orbit'){v3dYaw=.7;v3dPit=.3;v3dDist=30}else{v3dYaw=0;v3dPit=.2;v3dDist=22}
+ v3dFov=v3dCam==='cockpit'?1.13:1.05;
+}
+function v3dInit(){
+ const chip=(id,txt,on)=>{const e=$(id);e.textContent=txt;e.classList.toggle('on',on)};
+ $('v3dCam').onclick=()=>{const i=(V3D_CAMS.findIndex(c=>c[0]===v3dCam)+1)%V3D_CAMS.length;v3dCam=V3D_CAMS[i][0];v3dResetCam();chip('v3dCam','View: '+V3D_CAMS[i][1],true)};
+ $('v3dTerr').onclick=()=>{const i=(V3D_TERRS.findIndex(c=>c[0]===v3dTerr)+1)%V3D_TERRS.length;v3dTerr=V3D_TERRS[i][0];chip('v3dTerr','Terrain: '+V3D_TERRS[i][1],true)};
+ $('v3dHud').onclick=()=>{v3dHudOn=!v3dHudOn;chip('v3dHud','HUD: '+(v3dHudOn?'On':'Off'),v3dHudOn)};
+ $('v3dTrail').onclick=()=>{v3dTrailOn=!v3dTrailOn;chip('v3dTrail','Trail: '+(v3dTrailOn?'On':'Off'),v3dTrailOn)};
+ $('v3dReset').onclick=v3dResetCam;
+ chip('v3dTerr','Terrain: Garmin SVT',true);chip('v3dHud','HUD: On',true);chip('v3dTrail','Trail: On',true);
+ // drag to orbit / look around, wheel or pinch to zoom
+ const wrap=$('v3dWrap'),zoom=f=>{v3dDist=clamp(v3dDist*f,6,160)};
+ const drag=(x,y)=>{if(!v3dDrag)return;v3dYaw-=(x-v3dDrag[0])*.006;v3dPit=clamp(v3dPit+(y-v3dDrag[1])*.006,-.25,1.45);v3dDrag=[x,y]};
+ wrap.addEventListener('mousedown',e=>{v3dDrag=[e.clientX,e.clientY]});
+ document.addEventListener('mousemove',e=>drag(e.clientX,e.clientY));
+ document.addEventListener('mouseup',()=>{v3dDrag=null});
+ wrap.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0012))},{passive:false});
+ const pd=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+ wrap.addEventListener('touchstart',e=>{const t=e.touches;if(t.length===1){v3dDrag=[t[0].clientX,t[0].clientY];v3dPinch=0}else if(t.length===2){v3dDrag=null;v3dPinch=pd(t)}},{passive:true});
+ wrap.addEventListener('touchmove',e=>{const t=e.touches;if(t.length===1)drag(t[0].clientX,t[0].clientY);else if(t.length===2&&v3dPinch){const d=pd(t);if(d>0)zoom(v3dPinch/d);v3dPinch=d}},{passive:true});
+ wrap.addEventListener('touchend',()=>{v3dDrag=null;v3dPinch=0},{passive:true});
+ // WebGL. The headless test DOM has no real context, so bail out quietly without one.
+ let gl=null;try{gl=$('gl3d').getContext('webgl',{antialias:true,alpha:false})||$('gl3d').getContext('experimental-webgl')}catch(e){}
+ const probe=gl&&gl.createProgram&&gl.createProgram();
+ if(!gl||!gl.createProgram||!probe)return;
+ gl.deleteProgram(probe);
+ try{
+  const prog=(vs,fs,attrs)=>{
+   const mk=(t,s)=>{const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(sh));return sh};
+   const p=gl.createProgram();gl.attachShader(p,mk(gl.VERTEX_SHADER,vs));gl.attachShader(p,mk(gl.FRAGMENT_SHADER,fs));
+   attrs.forEach((a,i)=>gl.bindAttribLocation(p,i,a));gl.linkProgram(p);
+   if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));return p};
+  const locs=(p,names)=>{const o={};for(const n of names)o[n]=gl.getUniformLocation(p,n);return o};
+  v3dProgM=prog(v3dVS,v3dFS,['aP','aC','aN']);v3dLoc=locs(v3dProgM,['uVP','uM','uEye','uFa','uFb','uFog','uLit','uAlpha']);
+  v3dProgS=prog(v3dSkyVS,v3dSkyFS,['aQ']);v3dSLoc=locs(v3dProgS,['uF','uR','uU','uT','uHor','uZen']);
+  const buf=(arr,dyn)=>{const b={buf:gl.createBuffer(),n:0};if(arr)v3dUpload(gl,b,arr,dyn);return b};
+  v3dBuf={plane:buf(v3dBuildPlane()),prop:buf(v3dBuildProp()),runway:buf(v3dBuildRunway()),shadow:buf(v3dBuildShadow()),
+   terrain:buf(null),lines:buf(null),ribbon:buf(null),sky:{buf:gl.createBuffer(),n:6}};
+  gl.bindBuffer(gl.ARRAY_BUFFER,v3dBuf.sky.buf);gl.bufferData(gl.ARRAY_BUFFER,Float32Array.of(-1,-1,1,-1,1,1,-1,-1,1,1,-1,1),gl.STATIC_DRAW);
+  gl.enable(gl.DEPTH_TEST);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  v3dGL=gl;v3dResetCam();v3dResize();
+ }catch(err){v3dGL=null;$('v3dInfo').textContent='3D view unavailable: '+err.message}
+}
+function v3dUpload(gl,b,arr,dyn){gl.bindBuffer(gl.ARRAY_BUFFER,b.buf);gl.bufferData(gl.ARRAY_BUFFER,arr,dyn?gl.DYNAMIC_DRAW:gl.STATIC_DRAW);b.n=arr.length/9}
+function v3dResize(){
+ const wrap=$('v3dWrap'),dpr=window.devicePixelRatio||1,w=Math.round(wrap.clientWidth*dpr),h=Math.round(wrap.clientHeight*dpr);
+ if(w<2||h<2)return;
+ for(const id of['gl3d','hud3d']){const c=$(id);if(c.width!==w)c.width=w;if(c.height!==h)c.height=h}
+ if(v3dGL)v3dGL.viewport(0,0,w,h);
+}
+function v3dDraw(b,mode,M,lit,alpha){
+ const gl=v3dGL;if(!b.n)return;
+ gl.bindBuffer(gl.ARRAY_BUFFER,b.buf);
+ for(let i=0;i<3;i++){gl.enableVertexAttribArray(i);gl.vertexAttribPointer(i,3,gl.FLOAT,false,36,i*12)}
+ gl.uniformMatrix4fv(v3dLoc.uM,false,M);gl.uniform1f(v3dLoc.uLit,lit);gl.uniform1f(v3dLoc.uAlpha,alpha);
+ gl.drawArrays(mode,0,b.n);
+}
+const v3dWrap180=a=>((a%360)+540)%360-180;
+function v3dFrame(dt){
+ const gl=v3dGL;if(!gl)return;
+ const wrap=$('v3dWrap'),dpr=window.devicePixelRatio||1;
+ if(Math.round(wrap.clientWidth*dpr)!==$('gl3d').width||Math.round(wrap.clientHeight*dpr)!==$('gl3d').height)v3dResize();
+ const W=$('gl3d').width,H=$('gl3d').height;if(W<2||H<2)return;
+ const now=performance.now()/1000;
+ // aircraft state, relative to home
+ const org=Home||(P.length?{lat:P[0][0],lon:P[0][1]}:null);
+ let px=0,pz=0;if(org&&Z.lat!=null){px=(Z.lon-org.lon)*111320*Math.cos(org.lat*D2R);pz=(Z.lat-org.lat)*111320}
+ const okey=org?org.lat+','+org.lon:'';if(okey!==v3dOrgKey){v3dOrgKey=okey;v3dTr.length=0}
+ v3dOrg=org;if(org)demUpdate(org,Z.lat??org.lat,Z.lon??org.lon);
+ const py=Z.alt||0,roll=Z.roll||0,pitch=Z.pitch||0,hdgDeg=Z.hdg??Z.crs??0,hdg=hdgDeg*D2R;
+ const vn=Z.vn||0,ve=Z.ve||0,spd=Z.gs??Math.hypot(vn,ve),armed=!!((V.HEARTBEAT?.f.base_mode||0)&128);
+ v3dPropAng+=dt*(armed?Math.max(35,(Z.thr||25)*1.8):(spd>2?spd*2.5:3));
+ // 30 s path ribbon
+ const last=v3dTr[v3dTr.length-1];
+ if(last&&Math.hypot(px-last[0],pz-last[2])>400)v3dTr.length=0;
+ if(!last||now-last[3]>.2&&Math.hypot(px-last[0],py-last[1],pz-last[2])>.8)v3dTr.push([px,py,pz,now]);
+ while(v3dTr.length&&now-v3dTr[0][3]>30)v3dTr.shift();
+ // terrain warning: look ahead 12 s along the ground track
+ const gh=v3dElev(px,pz);
+ let taws=0;
+ if(spd>3&&py>=8)for(let t=1;t<=12;t++){const h=v3dElev(px+ve*t,pz+vn*t),pa=py+(Z.climb||0)*t;if(h>gh+10){if(h>=pa){taws=2;break}if(h>=pa-30)taws=1}} // only rising ground ahead counts
+ v3dTaws=taws;
+ // attitude basis (columns: right, up, forward)
+ const A=M4.id();M4.trans(A,A,[px,py,pz]);M4.rotY(A,A,hdg);M4.rotX(A,A,-pitch);M4.rotZ(A,A,-roll);
+ // camera
+ let eye,ctr,up=[0,1,0];
+ if(v3dCam==='cockpit'){
+  const fw=[A[8],A[9],A[10]];up=[A[4],A[5],A[6]];
+  eye=[px+A[4]*.55+A[8]*.9,py+A[5]*.55+A[9]*.9,pz+A[6]*.55+A[10]*.9];ctr=[eye[0]+fw[0]*20,eye[1]+fw[1]*20,eye[2]+fw[2]*20];
+ }else{
+  v3dCH+=v3dWrap180(hdgDeg-v3dCH)*(1-Math.exp(-dt*2.5));
+  const az=(v3dCam==='chase'?v3dCH*D2R+Math.PI+v3dYaw:v3dYaw+Math.PI),ce=Math.cos(v3dPit),d=v3dDist;
+  eye=[px+Math.sin(az)*ce*d,py+1.2+Math.sin(v3dPit)*d,pz+Math.cos(az)*ce*d];ctr=[px,py+.8,pz];
+  eye[1]=Math.max(eye[1],v3dElev(eye[0],eye[2])+2);
+ }
+ const VW=M4.lookAt(new Float32Array(16),eye,ctr,up),PR=M4.persp(new Float32Array(16),v3dFov,W/H,.5,7000),VP=M4.mul(new Float32Array(16),PR,VW);
+ // sky
+ const f=[ctr[0]-eye[0],ctr[1]-eye[1],ctr[2]-eye[2]],fl=Math.hypot(...f);f.forEach((v,i)=>f[i]=v/fl);
+ let r=[f[2]*up[1]-f[1]*up[2],f[0]*up[2]-f[2]*up[0],f[1]*up[0]-f[0]*up[1]];const rl=Math.hypot(...r)||1;r=r.map(v=>v/rl);
+ const u2=[r[1]*f[2]-r[2]*f[1],r[2]*f[0]-r[0]*f[2],r[0]*f[1]-r[1]*f[0]],th=Math.tan(v3dFov/2);
+ gl.clearColor(V3D_HOR[0],V3D_HOR[1],V3D_HOR[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+ gl.disable(gl.DEPTH_TEST);gl.useProgram(v3dProgS);
+ gl.uniform3fv(v3dSLoc.uF,f);gl.uniform3fv(v3dSLoc.uR,r);gl.uniform3fv(v3dSLoc.uU,u2);gl.uniform2f(v3dSLoc.uT,th*W/H,th);
+ gl.uniform3fv(v3dSLoc.uHor,V3D_HOR);gl.uniform3fv(v3dSLoc.uZen,V3D_ZEN);
+ gl.bindBuffer(gl.ARRAY_BUFFER,v3dBuf.sky.buf);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,2,gl.FLOAT,false,8,0);gl.drawArrays(gl.TRIANGLES,0,6);
+ for(let i=1;i<3;i++)gl.disableVertexAttribArray(i);
+ gl.enable(gl.DEPTH_TEST);
+ // scene
+ gl.useProgram(v3dProgM);
+ gl.uniformMatrix4fv(v3dLoc.uVP,false,VP);gl.uniform3fv(v3dLoc.uEye,eye);gl.uniform3fv(v3dLoc.uFog,V3D_HOR);gl.uniform1f(v3dLoc.uFa,700);gl.uniform1f(v3dLoc.uFb,2200);
+ const ID=M4.id(),key=[Math.round(px/120),Math.round(pz/120),Math.floor(py/6),v3dTerr,DEM.ver].join('|');
+ if(key!==v3dTerrKey){v3dTerrKey=key;const t=v3dBuildTerrain(px,pz,py,v3dTerr);v3dUpload(gl,v3dBuf.terrain,t.tris,true);v3dUpload(gl,v3dBuf.lines,t.lines,true)}
+ gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(1,1);
+ v3dDraw(v3dBuf.terrain,gl.TRIANGLES,ID,v3dTerr==='wire'?0:1,1);
+ gl.polygonOffset(-2,-2);v3dDraw(v3dBuf.runway,gl.TRIANGLES,ID,1,1);
+ gl.polygonOffset(0,0);
+ if(v3dTerr!=='sat')v3dDraw(v3dBuf.lines,gl.LINES,ID,0,v3dTerr==='wire'?1:.35);
+ if(v3dTrailOn&&v3dTr.length>1){v3dUpload(gl,v3dBuf.ribbon,v3dBuildRibbon(v3dTr),true);v3dDraw(v3dBuf.ribbon,gl.TRIANGLES,ID,0,.85)}
+ if(py-gh<300){ // shadow on the ground below
+  const S=M4.id();M4.trans(S,S,[px,gh+.35,pz]);M4.rotY(S,S,hdg);M4.scale(S,S,[4.5,1,3.4]);
+  gl.polygonOffset(-4,-4);v3dDraw(v3dBuf.shadow,gl.TRIANGLES,S,0,.38);gl.polygonOffset(0,0)}
+ if(v3dCam!=='cockpit'){
+  v3dDraw(v3dBuf.plane,gl.TRIANGLES,A,1,1);
+  const Pm=new Float32Array(A);M4.rotZ(Pm,Pm,v3dPropAng);v3dDraw(v3dBuf.prop,gl.TRIANGLES,Pm,1,1)}
+ gl.disable(gl.POLYGON_OFFSET_FILL);
+ // overlay
+ const hc=$('hud3d');
+ if(v3dHudOn)drawGarminHUD(hc);else hc.getContext('2d').clearRect(0,0,hc.width,hc.height);
+ if(now-v3dInfoT>.3){v3dInfoT=now;
+  const s=`${v3dCam==='cockpit'?'Cockpit':v3dCam==='chase'?'Chase':'Orbit'} · alt ${Math.round(CV.len(py))} ${UN.len()} · ground ${Math.round(CV.len(gh))} ${UN.len()} from home · ${demStatus()}`;
+  if(s!==v3dInfoS){v3dInfoS=s;$('v3dInfo').textContent=s}}
+}
+
+// ---- Garmin-style primary flight display, drawn over the 3D scene ----
+function drawGarminHUD(cv){
+ const g=cv.getContext('2d'),W=cv.width,H=cv.height;g.clearRect(0,0,W,H);
+ const u=Math.min(H/600,W/860),cx=W/2,cy=H/2,F=(H/2)/Math.tan(v3dFov/2);
+ const roll=Z.roll||0,pitch=Z.pitch||0,pd=pitch/D2R,hdg=(((Z.hdg??Z.crs??0)%360)+360)%360;
+ const vn=Z.vn||0,ve=Z.ve||0,gs=Z.gs??Math.hypot(vn,ve),as=Z.as??gs,climb=Z.climb||0;
+ const WHITE='#fff',YEL='#ffd23a',GRN='#3dff7a',SH='rgba(0,0,0,.7)';
+ g.lineCap='round';g.lineJoin='round';g.shadowColor=SH;g.shadowBlur=3*u;
+ const text=(s,x,y,px,c,al,bold)=>{g.font=(bold===false?'':'bold ')+px*u+'px sans-serif';g.fillStyle=c||WHITE;g.textAlign=al||'center';g.textBaseline='middle';g.fillText(s,x,y)};
+ const line=(x0,y0,x1,y1,c,w)=>{g.strokeStyle=c||WHITE;g.lineWidth=(w||2)*u;g.beginPath();g.moveTo(x0,y0);g.lineTo(x1,y1);g.stroke()};
+ // 1+2. horizon line and pitch ladder: rotates with the aircraft's roll, rungs placed as the camera would see them
+ g.save();g.translate(cx,cy);g.rotate(-roll);
+ const yAt=d=>-F*Math.tan((d-pd)*D2R);
+ line(-W*1.2,yAt(0),W*1.2,yAt(0),WHITE,2);
+ for(const d of[-20,-15,-10,-5,5,10,15,20]){
+  const y=yAt(d);if(Math.abs(y)>H*.6)continue;
+  const hw=(d%10===0?56:30)*u,tip=(d>0?9:-9)*u; // end ticks point back toward the horizon
+  g.strokeStyle=WHITE;g.lineWidth=2*u;g.setLineDash(d<0?[8*u,6*u]:[]);
+  g.beginPath();g.moveTo(-hw,y+tip);g.lineTo(-hw,y);g.lineTo(hw,y);g.lineTo(hw,y+tip);g.stroke();g.setLineDash([]);
+  if(d%10===0){text(Math.abs(d),-hw-16*u,y,13,WHITE);text(Math.abs(d),hw+16*u,y,13,WHITE)}}
+ // 4. flight path marker: where the aircraft is actually going (climb angle, and crab from wind drift)
+ if(gs>3){
+  const gam=Math.atan2(climb,gs)/D2R,drift=Z.crs!=null?v3dWrap180(Z.crs-hdg):0,lim=H*.42;
+  const fx=clamp(F*Math.tan(drift*D2R),-lim,lim),fy=clamp(yAt(gam),-lim,lim);
+  g.strokeStyle=GRN;g.lineWidth=2.4*u;g.beginPath();g.arc(fx,fy,7*u,0,6.2832);g.moveTo(fx-7*u,fy);g.lineTo(fx-20*u,fy);g.moveTo(fx+7*u,fy);g.lineTo(fx+20*u,fy);g.moveTo(fx,fy-7*u);g.lineTo(fx,fy-15*u);g.stroke()}
+ g.restore();
+ // 3. boresight "batwing"
+ g.fillStyle=YEL;g.strokeStyle='#000';g.lineWidth=1.5*u;g.beginPath();
+ g.moveTo(cx-78*u,cy+10*u);g.lineTo(cx-28*u,cy+10*u);g.lineTo(cx,cy);g.lineTo(cx+28*u,cy+10*u);g.lineTo(cx+78*u,cy+10*u);g.lineTo(cx+28*u,cy+20*u);g.lineTo(cx,cy+11*u);g.lineTo(cx-28*u,cy+20*u);g.closePath();g.fill();g.stroke();
+ // 5. roll scale: fixed arc with ticks, a pointer that follows the bank angle and a slip/skid bar under it
+ const Rr=Math.min(190*u,cy-70*u);
+ if(Rr>40*u){
+  g.strokeStyle=WHITE;g.lineWidth=2*u;g.beginPath();g.arc(cx,cy,Rr,-Math.PI/2-60*D2R,-Math.PI/2+60*D2R);g.stroke();
+  for(const a of[0,10,20,30,45,60])for(const s of a?[-1,1]:[1]){
+   const t=s*a*D2R,len=(a===0||a===30||a===60?15:9)*u,sn=Math.sin(t),cs=Math.cos(t);
+   line(cx+Rr*sn,cy-Rr*cs,cx+(Rr+len)*sn,cy-(Rr+len)*cs,WHITE,2)}
+  g.fillStyle=YEL;g.beginPath();g.moveTo(cx,cy-Rr-2*u);g.lineTo(cx-7*u,cy-Rr-14*u);g.lineTo(cx+7*u,cy-Rr-14*u);g.closePath();g.fill(); // fixed sky pointer
+  const spdOK=Math.max(as,gs)>5,coord=spdOK?57.2958*9.81*Math.tan(roll)/Math.max(5,gs,as):0;
+  const slip=spdOK?clamp(((Z.crm||0)-coord)/12,-1,1):0; // turn-rate mismatch: the hub has no lateral accelerometer
+  g.save();g.translate(cx,cy);g.rotate(roll);
+  g.fillStyle=WHITE;g.beginPath();g.moveTo(0,-Rr+2*u);g.lineTo(-7*u,-Rr+16*u);g.lineTo(7*u,-Rr+16*u);g.closePath();g.fill();
+  g.fillStyle=WHITE;g.fillRect(-9*u+slip*14*u,-Rr+18*u,18*u,5*u);
+  g.restore()}
+ // tapes
+ const tape=(x,w,val,step,vis,fmt,left,extra)=>{
+  const h=270*u,ppu=h/(step*vis),y0=cy-h/2;
+  g.save();g.shadowBlur=0;g.fillStyle='rgba(8,12,18,.55)';g.fillRect(x,y0,w,h);g.beginPath();g.rect(x,y0,w,h);g.clip();
+  if(extra)extra(x,w,y0,h,ppu);
+  const lo=Math.floor((val-step*vis/2)/step),hi=Math.ceil((val+step*vis/2)/step),base=left?x+w:x,dir=left?-1:1;
+  for(let k=lo;k<=hi;k++){const v=k*step,y=cy-(v-val)*ppu,maj=k%2===0;if(v<0)continue;
+   line(base,y,base+dir*(maj?14:8)*u,y,WHITE,2);
+   if(maj)text(fmt(v),left?x+w-20*u:x+20*u,y,13,WHITE,left?'right':'left')}
+  g.restore();
+  // readout box with pointer
+  const bw=w-4*u,bh=30*u,bx=left?x:x+4*u;
+  g.fillStyle='#000';g.strokeStyle=WHITE;g.lineWidth=1.5*u;g.beginPath();
+  if(left){g.moveTo(bx,cy-bh/2);g.lineTo(bx+bw,cy-bh/2);g.lineTo(bx+bw,cy-6*u);g.lineTo(bx+bw+8*u,cy);g.lineTo(bx+bw,cy+6*u);g.lineTo(bx+bw,cy+bh/2);g.lineTo(bx,cy+bh/2)}
+  else{g.moveTo(bx+bw,cy-bh/2);g.lineTo(bx,cy-bh/2);g.lineTo(bx,cy-6*u);g.lineTo(bx-8*u,cy);g.lineTo(bx,cy+6*u);g.lineTo(bx,cy+bh/2);g.lineTo(bx+bw,cy+bh/2)}
+  g.closePath();g.fill();g.stroke();
+  text(String(Math.round(val)),bx+bw/2,cy,17,GRN);
+  return y0+h};
+ const xL=cx-306*u,xR=cx+236*u,tw=70*u;
+ // 6. airspeed tape (left)
+ const sb=tape(xL,tw,Math.max(0,CV.spd(as)),5,12,v=>v,true);
+ text(UN.spd(),xL+tw/2,sb+10*u,11,'#9fb4cc');
+ // 7. altitude tape (right), with the ground rising into it
+ const alt=CV.len(Z.alt||0);
+ const gnd=CV.len(v3dGroundBelow());
+ const ab=tape(xR,tw,alt,imp()?50:10,12,v=>v,false,(x,w,y0,h,ppu)=>{
+  const gy=cy-(gnd-alt)*ppu;if(gy<y0+h){g.fillStyle='rgba(150,105,50,.85)';g.fillRect(x,Math.max(y0,gy),w,y0+h-Math.max(y0,gy));line(x,gy,x+w,gy,'#e6b36a',2)}});
+ text(UN.len(),xR+tw/2,ab+10*u,11,'#9fb4cc');
+ // 8. vertical speed: needle on a short scale
+ const vx=xR+tw+6*u,vw=34*u,vh=210*u,vs=CV.vs(climb),S=imp()?2000:10;
+ g.save();g.shadowBlur=0;g.fillStyle='rgba(8,12,18,.55)';g.fillRect(vx,cy-vh/2,vw,vh);g.restore();
+ for(let k=-4;k<=4;k++){const y=cy-k/4*vh/2,lab=k===0||Math.abs(k)===2||Math.abs(k)===4;
+  line(vx,y,vx+(lab?9:5)*u,y,WHITE,1.5);
+  if(lab&&k)text(imp()?Math.abs(k/4*S/1000):Math.abs(k/4*S),vx+vw-8*u,y,10,'#cfe0f5')}
+ line(vx+vw,cy-clamp(vs/S,-1,1)*vh/2,vx+3*u,cy,GRN,3);
+ text(imp()?String(Math.round(vs/50)*50):vs.toFixed(1),vx+vw/2,cy+vh/2+12*u,12,GRN);
+ // 9. heading tape (top) with ground-track diamond
+ const hw=340*u,hx=cx-hw/2,hy=40*u,hh=28*u,ppd=hw/84;
+ g.save();g.shadowBlur=0;g.fillStyle='rgba(8,12,18,.55)';g.fillRect(hx,hy,hw,hh);g.beginPath();g.rect(hx,hy-14*u,hw,hh+14*u);g.clip();
+ for(let a=Math.floor((hdg-42)/5)*5;a<=hdg+42;a+=5){
+  const x=cx+(a-hdg)*ppd,n=((a%360)+360)%360,big=n%10===0;
+  line(x,hy+hh,x,hy+hh-(big?10:6)*u,WHITE,2);
+  if(n%30===0){const c={0:'N',90:'E',180:'S',270:'W'}[n];text(c||String(n/10),x,hy+10*u,c?17:13,c?YEL:WHITE)}}
+ if(Z.crs!=null){const d=clamp(v3dWrap180(Z.crs-hdg),-40,40),x=cx+d*ppd,y=hy+hh-4*u;
+  g.fillStyle='#ff5df0';g.beginPath();g.moveTo(x,y-7*u);g.lineTo(x+6*u,y);g.lineTo(x,y+7*u);g.lineTo(x-6*u,y);g.closePath();g.fill()}
+ g.restore();
+ g.fillStyle=WHITE;g.beginPath();g.moveTo(cx,hy+hh+1*u);g.lineTo(cx-6*u,hy+hh+11*u);g.lineTo(cx+6*u,hy+hh+11*u);g.closePath();g.fill();
+ g.fillStyle='#000';g.strokeStyle=WHITE;g.lineWidth=1.5*u;g.fillRect(cx-22*u,hy+hh+12*u,44*u,19*u);g.strokeRect(cx-22*u,hy+hh+12*u,44*u,19*u);
+ text(String(Math.round(hdg)%360).padStart(3,'0')+'°',cx,hy+hh+22*u,13,GRN);
+ // 10. top banner: flight mode, arm state, battery
+ const hb=V.HEARTBEAT?.f,armed=!!((hb?.base_mode||0)&128),mode=modeName(hb)||'NO LINK',b=battState();
+ text(mode.toUpperCase(),16*u,18*u,15,WHITE,'left');
+ text(armed?'ARMED':'DISARMED',cx,16*u,13,armed?'#ff6b5e':GRN);
+ text(b.vOK&&Z.v!=null?Z.v.toFixed(1)+' V'+(b.pctOK?'  '+V.SYS_STATUS.f.battery_remaining+'%':''):'BATT –',W-16*u,18*u,15,b.vOK&&b.pctOK&&V.SYS_STATUS.f.battery_remaining<20?'#ffb000':WHITE,'right');
+ if(Date.now()-lastRx>2500)text(lastRx?'NO TELEMETRY':'WAITING FOR DATA',cx,cy+150*u,18,'#ffb000');
+ // terrain warning
+ if(v3dTaws){const flash=v3dTaws===2?Math.floor(performance.now()/350)%2===0:true;
+  if(flash){const msg=v3dTaws===2?'PULL UP':'TERRAIN',c=v3dTaws===2?'#e5251c':'#f5b50a',bw=130*u;
+   g.shadowBlur=0;g.fillStyle=c;g.fillRect(cx-bw/2,cy+100*u,bw,28*u);text(msg,cx,cy+114*u,18,v3dTaws===2?WHITE:'#000')}}
+}
+// Ground height under the aircraft's current position (the same made-up terrain the 3D view draws).
+function v3dGroundBelow(){
+ const org=Home||(P.length?{lat:P[0][0],lon:P[0][1]}:null);
+ if(!org||Z.lat==null)return 0;
+ return v3dElev((Z.lon-org.lon)*111320*Math.cos(org.lat*D2R),(Z.lat-org.lat)*111320);
+}
+v3dInit();
+
 let tlast=performance.now(),acc=0;
 function frame(now){
  const dt=Math.min(.1,(now-tlast)/1000);tlast=now;step(dt);
- if(view==='flight')horizon();if(view==='map')mapFrame();
+ if(view==='flight')horizon();if(view==='map')mapFrame();if(view==='synth3d')v3dFrame(dt);
  acc+=dt;if(acc>.12){acc=0;upStats();render()}
  requestAnimationFrame(frame);
 }
@@ -581,13 +1025,15 @@ const fmtMB=b=>b<52429?'under 0.1 MB':b<10485760?(b/1048576).toFixed(1)+' MB':Ma
 const zopts=Array.from({length:15},(_,i)=>`<option value="${i+3}">${i+3} · ${zname(i+3)}</option>`).join('');
 $('omz0').innerHTML=zopts;$('omz1').innerHTML=zopts;
 $('omopts').innerHTML=PRESETS.map(([v,n,d],i)=>`<label class="opt${i===1?' on':''}"><input type="radio" name="omd" value="${v}"${i===1?' checked':''}><b>${n}</b><span>${d}</span><i></i></label>`).join('');
-const omRange=()=>{const r=document.querySelector('[name=omd]:checked');return r?r.value.split('-').map(Number):[+$('omz0').value,+$('omz1').value]};
+const omRange=()=>{if(omLayer==='terrain')return[DEM_Z,DEM_Z];const r=document.querySelector('[name=omd]:checked');return r?r.value.split('-').map(Number):[+$('omz0').value,+$('omz1').value]};
 function omSync(){const[a,b]=omRange();$('omz0').value=a;$('omz1').value=b;for(const l of document.querySelectorAll('.opt'))l.classList.toggle('on',l.querySelector('input').checked)}
 omSync();
 function omSetLayer(){
  if(omT)om.removeLayer(omT);
- omT=L.tileLayer('/tiles/'+omLayer+'/{z}/{x}/{y}',{maxZoom:19,attribution:omLayer==='street'?'© OpenStreetMap':'Tiles © Esri'}).addTo(om);
- $('om').classList.toggle('street',omLayer==='street');
+ const base=omLayer==='terrain'?'street':omLayer; // elevation tiles are not pictures: show the street map and mark what is saved on top
+ omT=L.tileLayer('/tiles/'+base+'/{z}/{x}/{y}',{maxZoom:19,attribution:base==='street'?'© OpenStreetMap':'Tiles © Esri'}).addTo(om);
+ $('om').classList.toggle('street',base==='street');
+ $('omopts').style.display=$('omopts').nextElementSibling.style.display=omLayer==='terrain'?'none':'';
 }
 // The blue frame is inset 12% from each edge of the map (see #omframe), so the area to save is the same 12% inset in pixels.
 function omBounds(){const s=om.getSize();return L.latLngBounds(om.containerPointToLatLng([s.x*.12,s.y*.88]),om.containerPointToLatLng([s.x*.88,s.y*.12]))}
@@ -604,8 +1050,8 @@ function omInit(){
 function omPlan(){
  clearTimeout(omTimer);
  omTimer=setTimeout(async()=>{
-  if(!om)return;const tok=++omTok,avg=omSum[omLayer]?.avg||(omLayer==='sat'?30000:15000);
-  const[z0,z1]=omRange(),ranges=PRESETS.map(p=>p[0].split('-').map(Number)).concat([[z0,z1]]);
+  if(!om)return;const tok=++omTok,avg=omSum[omLayer]?.avg||(omLayer==='sat'?30000:omLayer==='terrain'?75000:15000);
+  const[z0,z1]=omRange(),ranges=(omLayer==='terrain'?PRESETS.map(()=>[z0,z1]):PRESETS.map(p=>p[0].split('-').map(Number))).concat([[z0,z1]]);
   const rs=await Promise.all(ranges.map(([a,b])=>fetch('/precache/plan?'+omQ(a,b)).then(r=>r.json()).catch(()=>null)));
   if(tok!==omTok)return;
   const n=r=>r.missing??r.total,over=r=>r.limit>0&&r.total>r.limit,bad=r=>!r||r.error||over(r);
@@ -630,7 +1076,7 @@ async function omRefresh(){
  const zs=Object.keys(sm.zooms).map(Number).sort((a,b)=>a-b),tot=zs.reduce((a,z)=>a+sm.zooms[z].bytes,0),nt=zs.reduce((a,z)=>a+sm.zooms[z].tiles,0);
  $('omtot').textContent=zs.length?`${nt.toLocaleString()} tiles · ${fmtMB(tot)}`:'';
  $('omsum').innerHTML=zs.length?zs.map(z=>`<div class="crow"><span>Zoom ${z} · ${zname(z)}</span><b>${sm.zooms[z].tiles.toLocaleString()} tiles · ${fmtMB(sm.zooms[z].bytes)}</b></div>`).join(''):
-  '<p class="mute" style="margin:0">Nothing saved for this layer yet. Tiles you look at on the Map tab are kept automatically; use the download above to save a whole area before a trip.</p>';
+  '<p class="mute" style="margin:0">Nothing saved for this layer yet. Tiles you look at on the Map tab (and terrain the 3D Vision tab loads) are kept automatically; use the download above to save a whole area before a trip.</p>';
  $('omclear').style.display=zs.length?'':'none';
  $('omdir').textContent='Stored on the hub computer in '+sm.dir+' — they stay there across restarts and reboots.';
  drawCov();omPlan();
@@ -670,7 +1116,7 @@ $('omdel').onclick=async()=>{
  omNote=r.error||`Deleted ${(r.deleted||0).toLocaleString()} saved tiles from this frame.`;$('omst').textContent=omNote;omRefresh();
 };
 $('omclear').onclick=async()=>{
- if(!confirm(`Delete every saved ${omLayer==='street'?'street':'satellite'} tile, for all areas? The map will need internet again until they are downloaded afresh.`))return;
+ if(!confirm(`Delete every saved ${omLayer==='street'?'street':omLayer==='terrain'?'terrain':'satellite'} tile, for all areas? The map will need internet again until they are downloaded afresh.`))return;
  const r=await fetch('/cache/clear?layer='+omLayer,{method:'POST'}).then(r=>r.json()).catch(()=>({error:'Could not reach the hub'}));
  omNote=r.error||'Saved tiles deleted.';$('omst').textContent=omNote;omRefresh();
 };
