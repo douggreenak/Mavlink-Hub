@@ -51,7 +51,10 @@ main{padding:8px 24px 24px;max-width:1500px;margin:0 auto}
 .rc{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px 16px;font-size:13px;color:var(--mute)}
 .bar{height:8px;border-radius:4px;background:var(--sh);overflow:hidden;margin-top:4px}
 .bar i{display:block;height:100%;background:var(--p);border-radius:4px}
-#lf,#cv{height:calc(100vh - 200px);min-height:360px;width:100%;border-radius:16px;display:none;overflow:hidden;border:1px solid var(--out)}
+#lf,#cv,#v3dWrap{height:calc(100vh - 200px);min-height:360px;width:100%;border-radius:16px;display:none;overflow:hidden;border:1px solid var(--out)}
+#synth3d.on #v3dWrap{display:block;position:relative;background:#090d14;box-shadow:var(--shadow);touch-action:none;user-select:none}
+#gl3d,#hud3d{position:absolute;inset:0;width:100%;height:100%;display:block}
+#hud3d{pointer-events:none}
 #cv{background:var(--sh)}
 .all{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .all .card{margin:0}
@@ -155,7 +158,7 @@ button.chip.warn{background:var(--warn);color:var(--owarn)}
 <header><h1>Flight telemetry</h1>
 <div id="chips"><span id="link" class="chip">Connecting…</span><span id="arm" class="chip"></span><button id="demo" class="chip" style="cursor:pointer">Demo mode</button><button id="theme" class="chip" style="cursor:pointer">Theme: Auto</button><button id="units" class="chip" style="cursor:pointer">Units: Metric</button><button id="edit" class="chip" style="cursor:pointer">Edit tiles</button><button id="he" class="chip" style="cursor:pointer">Hide empty</button><button id="qrb" class="chip" style="cursor:pointer">Open on phone</button></div>
 <button id="bars" class="bars" aria-label="Connection stats"></button></header>
-<nav id="nav"><button data-v="flight" class="on">Flight</button><button data-v="map">Map</button><button data-v="maps">Offline</button><button data-v="all">All data</button></nav>
+<nav id="nav"><button data-v="flight" class="on">Flight</button><button data-v="map">Map</button><button data-v="synth3d">3D Vision</button><button data-v="maps">Offline</button><button data-v="all">All data</button></nav>
 <main>
 <div id="fileWarn" class="card" style="display:none">You opened this file directly, so there is no live data and the map cannot load. Start the hub (double-click <b>MAVLink Hub.bat</b> on Windows, <b>start.command</b> on a Mac, or run <b>node server.js</b>) and open <b>http://localhost:8080</b>. Demo mode still works here.</div>
 <div id="flight" class="view on">
@@ -184,6 +187,20 @@ button.chip.warn{background:var(--warn);color:var(--owarn)}
   <p class="mute small" style="margin:6px 0 0"><b>Advisory only.</b> This data comes from the FAA and may be out of date or incomplete. It does not replace the FAA's own tools (B4UFLY, NOTAMs) or your responsibility to check before flying.</p>
  </div>
  <div id="lf"></div><canvas id="cv"></canvas>
+</div>
+<div id="synth3d" class="view">
+ <div class="mrow">
+  <button class="chip on" id="v3dCam" style="cursor:pointer">View: Chase</button>
+  <button class="chip" id="v3dTerr" style="cursor:pointer">Terrain: Garmin SVT</button>
+  <button class="chip" id="v3dHud" style="cursor:pointer">HUD: On</button>
+  <button class="chip" id="v3dTrail" style="cursor:pointer">Trail: On</button>
+  <button class="chip" id="v3dReset" style="cursor:pointer">Center view</button>
+  <span id="v3dInfo" class="mute small" style="margin-left:auto"></span>
+ </div>
+ <div id="v3dWrap">
+  <canvas id="gl3d"></canvas>
+  <canvas id="hud3d"></canvas>
+ </div>
 </div>
 <div id="maps" class="view">
  <div class="mrow"><button class="chip on" data-ml="street">Street</button><button class="chip" data-ml="sat">Satellite</button>
@@ -438,7 +455,7 @@ let view='flight';
 $('nav').onclick=e=>{const v=e.target.dataset.v;if(!v)return;view=v;
  for(const b of $('nav').children)b.classList.toggle('on',b.dataset.v===v);
  for(const el of document.querySelectorAll('.view'))el.classList.toggle('on',el.id===v);
- if(lm)setTimeout(()=>lm.invalidateSize(),50);render()};
+ if(lm)setTimeout(()=>lm.invalidateSize(),50);if(view==='synth3d')setTimeout(v3dResize,30);render()};
 $('fol').onclick=()=>{follow=!follow;$('fol').textContent=follow?'Following plane':'Follow plane'};
 // Smoothing: each value glides toward the newest reading; position also dead-reckons from ground velocity
 const Z={},ZV={},col={};
