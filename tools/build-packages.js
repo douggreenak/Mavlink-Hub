@@ -6,11 +6,13 @@
 //   node tools/build-packages.js --only mac       one platform
 //   node tools/build-packages.js --node v24.22.2  a specific Node version
 //   node tools/build-packages.js --no-runtime     the same folders without Node (fast; used by the tests)
-//   node tools/build-packages.js --no-installers  only the two ZIPs
+//   node tools/build-packages.js --no-installers  only the folders/ZIPs (no installer or disk image)
+//   node tools/build-packages.js --zips           also make a portable ZIP of each (not part of a release)
 //   node tools/build-packages.js --require-installers  fail if the Windows installer or Mac disk image cannot be built (used by the release)
 //
-// Output goes to dist/: MAVLink-Hub-Setup.exe (Windows installer), MAVLink-Hub.dmg (Mac disk image), the two portable ZIPs
-// (MAVLink-Hub-Windows.zip, MAVLink-Hub-Mac.zip; the in-app updater uses these) and SHA256SUMS.txt.
+// Output goes to dist/: MAVLink-Hub-Setup.exe (Windows installer), MAVLink-Hub.dmg (Mac disk image) and SHA256SUMS.txt. These are the
+// only two downloads of a release; the in-app updater downloads the same files. With --zips (or --no-installers) it also makes a
+// portable MAVLink-Hub-Windows.zip / MAVLink-Hub-Mac.zip for local testing.
 // The installer needs NSIS (makensis; brew install makensis) and the disk image needs hdiutil, so they are built on a Mac.
 // Node comes straight from nodejs.org and is checked against the SHA-256 list nodejs.org publishes; the official
 // binaries are used untouched, so their signatures stay valid. Needs: node, zip, unzip, tar (all standard on a Mac or Linux).
@@ -269,8 +271,8 @@ async function main() {
     const list = assemble({ platform: t, outDir: folder });
     if (runtime) await addRuntime(t, folder, version);
     if (t === 'mac' && !a.includes('--no-native')) { console.log('  compiling the native window'); buildNative(folder); }
-    fs.rmSync(zip, { force: true });
-    execFileSync('zip', ['-r', '-X', '-q', zip, TOP], { cwd: stage });
+    const zipIt = a.includes('--zips') || a.includes('--no-installers');
+    if (zipIt) { fs.rmSync(zip, { force: true }); execFileSync('zip', ['-r', '-X', '-q', zip, TOP], { cwd: stage }); }
     if (!a.includes('--no-installers')) { // the app people install: an installer on Windows, a disk image on a Mac
       const need = a.includes('--require-installers'), inst = t === 'windows' ? { out: path.join(DIST, 'MAVLink-Hub-Setup.exe'), tool: 'makensis', build: () => buildWindowsInstaller(folder, path.join(DIST, 'MAVLink-Hub-Setup.exe'), pkgVersion) }
         : { out: path.join(DIST, 'MAVLink-Hub.dmg'), tool: 'hdiutil', build: () => buildDmg(folder, path.join(DIST, 'MAVLink-Hub.dmg')) };
@@ -278,8 +280,7 @@ async function main() {
       else { console.log(`  building ${path.basename(inst.out)}`); inst.build(); sums.push(`${sha256(fs.readFileSync(inst.out))}  ${path.basename(inst.out)}`); console.log(`  ${path.relative(ROOT, inst.out)}  ${(fs.statSync(inst.out).size / 1048576).toFixed(1)} MB`); }
     }
     fs.rmSync(stage, { recursive: true, force: true });
-    const size = fs.statSync(zip).size; sums.push(`${sha256(fs.readFileSync(zip))}  ${name}.zip`);
-    console.log(`  ${path.relative(ROOT, zip)}  ${(size / 1048576).toFixed(1)} MB, ${list.length} app files`);
+    if (zipIt) { sums.push(`${sha256(fs.readFileSync(zip))}  ${name}.zip`); console.log(`  ${path.relative(ROOT, zip)}  ${(fs.statSync(zip).size / 1048576).toFixed(1)} MB, ${list.length} app files`); }
   }
   fs.writeFileSync(path.join(DIST, 'SHA256SUMS.txt'), sums.join('\n') + '\n');
 }

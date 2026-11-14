@@ -59,9 +59,9 @@ before(async () => {
 });
 after(() => { gh.close(); });
 const reset = (tag = 'v9.9.9', over = {}) => {
-  hits = {}; sums = `${sha(zipBytes)}  MAVLink-Hub-Windows.zip\n${sha(zipBytes)}  MAVLink-Hub-Mac.zip\n`;
+  hits = {}; sums = `${sha(zipBytes)}  MAVLink-Hub-Setup.exe\n${sha(zipBytes)}  MAVLink-Hub.dmg\n`;
   release = { tag_name: tag, html_url: ghUrl + '/release', body: 'What is new', assets: [
-    { name: 'MAVLink-Hub-Windows.zip', browser_download_url: ghUrl + '/redirect/zip' }, { name: 'MAVLink-Hub-Mac.zip', browser_download_url: ghUrl + '/redirect/zip' },
+    { name: 'MAVLink-Hub-Setup.exe', browser_download_url: ghUrl + '/redirect/zip' }, { name: 'MAVLink-Hub.dmg', browser_download_url: ghUrl + '/redirect/zip' },
     { name: 'SHA256SUMS.txt', browser_download_url: ghUrl + '/dl/sums' }], ...over };
 };
 const winDir = () => { const d = fs.mkdtempSync(path.join(DIR, 'win-')); fs.mkdirSync(path.join(d, 'runtime')); fs.writeFileSync(path.join(d, 'runtime', 'node.exe'), ''); return d; };
@@ -95,7 +95,7 @@ test('check: a source checkout is told about the update but offered no install',
   assert.equal(s.status, 'available'); assert.equal(s.canInstall, false); assert.match(s.reason, /downloaded app/);
 });
 
-test('Windows install: downloads (through a redirect), checks the checksum, writes the helper, starts it, then stops the hub', async () => {
+test('Windows install: downloads the installer (through a redirect), checks the checksum, writes the helper, starts it, then stops the hub', async () => {
   reset('v9.9.9'); const { u, log } = make(), dir = u.how.dir;
   await u.check(); await u.install();
   assert.equal(u.state().status, 'restarting');
@@ -103,15 +103,16 @@ test('Windows install: downloads (through a redirect), checks the checksum, writ
   const { cmd, args, opt } = log.spawns[0];
   assert.equal(cmd, 'powershell.exe'); assert.ok(opt.detached && opt.windowsHide);
   const arg = (k) => args[args.indexOf(k) + 1];
-  assert.equal(arg('-Dest'), dir); assert.equal(arg('-HubPid'), '4242'); assert.equal(arg('-OwnerPid'), '777');
-  assert.ok(fs.readFileSync(arg('-Zip')).equals(zipBytes), 'the verified download is what the helper will unpack');
+  assert.equal(arg('-Dest'), dir); assert.match(path.basename(arg('-Setup')), /^MAVLink-Hub-Setup\.exe$/); assert.equal(arg('-HubPid'), '4242'); assert.equal(arg('-OwnerPid'), '777');
+  assert.ok(fs.readFileSync(arg('-Setup')).equals(zipBytes), 'the verified download is what the helper will run');
   assert.equal(fs.readFileSync(arg('-File'), 'utf8'), U.WINDOWS_HELPER);
-  assert.match(U.WINDOWS_HELPER, /robocopy/); assert.match(U.WINDOWS_HELPER, /\/XF hub\.env/, 'the user\'s settings file is never overwritten');
+  assert.match(U.WINDOWS_HELPER, /-ArgumentList "\/S \/D=\$Dest"/, 'the same installer, silently, into this very folder');
+  assert.match(U.WINDOWS_HELPER, /launcher\.ps1/, 'and the app is opened again afterwards');
   assert.equal(log.quits, 0, 'not yet: the page gets a moment to show it');
   await until(() => log.quits === 1);
 });
 test('install: a download whose checksum does not match is thrown away and nothing is started', async () => {
-  reset('v9.9.9'); sums = `${'0'.repeat(64)}  MAVLink-Hub-Windows.zip\n`;
+  reset('v9.9.9'); sums = `${'0'.repeat(64)}  MAVLink-Hub-Setup.exe\n`;
   const { u, log } = make(); await u.check();
   await assert.rejects(u.install(), /damaged/);
   assert.equal(u.state().status, 'available'); assert.match(u.state().error, /checksum/);
@@ -133,7 +134,7 @@ test('Mac install: the new app is swapped in beside the old one, the old one is 
   const root = fs.mkdtempSync(path.join(DIR, 'mac-')), app = path.join(root, 'MAVLink Hub.app'), res = path.join(app, 'Contents', 'Resources', 'app');
   fs.mkdirSync(res, { recursive: true }); fs.writeFileSync(path.join(res, 'server.js'), 'OLD');
   const marker = path.join(root, 'relaunch');
-  const extract = async (zip, dest) => { const f = path.join(dest, 'MAVLink Hub', 'MAVLink Hub.app', 'Contents', 'Resources', 'app'); fs.mkdirSync(f, { recursive: true }); fs.writeFileSync(path.join(f, 'server.js'), 'NEW'); assert.ok(fs.existsSync(zip)); };
+  const extract = async (zip, dest) => { const f = path.join(dest, 'MAVLink Hub.app', 'Contents', 'Resources', 'app'); fs.mkdirSync(f, { recursive: true }); fs.writeFileSync(path.join(f, 'server.js'), 'NEW'); assert.ok(zip.endsWith('MAVLink-Hub.dmg')); assert.ok(fs.existsSync(zip)); };
   const { u, log } = make({ platform: 'darwin', serverDir: res, extract, marker });
   assert.equal(u.how.kind, 'mac');
   await u.check(); await u.install();
@@ -150,7 +151,7 @@ test('Mac install: the new app is swapped in beside the old one, the old one is 
 test('Mac install: a download that is not MAVLink Hub is refused and the app is left alone', async () => {
   const root = fs.mkdtempSync(path.join(DIR, 'mac-')), app = path.join(root, 'MAVLink Hub.app'), res = path.join(app, 'Contents', 'Resources', 'app');
   fs.mkdirSync(res, { recursive: true }); fs.writeFileSync(path.join(res, 'server.js'), 'OLD');
-  await assert.rejects(U.swapMacApp({ zip: 'z', app, extract: async (z, d) => fs.mkdirSync(path.join(d, 'junk')) }), /does not look like/);
+  await assert.rejects(U.swapMacApp({ dmg: 'z', app, extract: async (z, d) => fs.mkdirSync(path.join(d, 'junk')) }), /does not look like/);
   assert.equal(fs.readFileSync(path.join(res, 'server.js'), 'utf8'), 'OLD'); assert.deepEqual(fs.readdirSync(root), ['MAVLink Hub.app']);
 });
 

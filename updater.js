@@ -2,19 +2,20 @@
 // Checks GitHub for a newer MAVLink Hub and, when asked, downloads and installs it.
 //
 //  - Looks at the project's latest GitHub release and compares its version with this one. Nothing is sent but the request.
-//  - Installing downloads the right ZIP for this computer from that release, checks it against the release's SHA256SUMS.txt,
-//    and refuses to go on if the checksum is wrong. Only github.com release downloads over https are accepted.
-//  - Windows: a small PowerShell helper (written to the saved-data folder) waits for the hub and its window to close, copies the
-//    new files over the app folder (keeping hub.env) and starts the hub again.
-//  - Mac: the new MAVLink Hub.app is unpacked beside the old one and swapped in; the app then reopens itself.
+//  - Installing downloads this computer's own download from that release (MAVLink-Hub-Setup.exe or MAVLink-Hub.dmg, the same files
+//    people install from), checks it against the release's SHA256SUMS.txt, and refuses to go on if the checksum is wrong.
+//    Only github.com release downloads over https are accepted.
+//  - Windows: a small PowerShell helper (written to the saved-data folder) waits for the hub and its window to close, runs the
+//    installer silently over the app folder (hub.env and saved data are never touched) and starts the hub again.
+//  - Mac: the new MAVLink Hub.app is copied out of the disk image beside the old one and swapped in; the app then reopens itself.
 //  - Only the downloaded app can update itself. A Git checkout or `node server.js` just gets a link to the release page.
 const fs = require('fs'), path = require('path'), os = require('os'), https = require('https'), http = require('http'), crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 
 const API = 'https://api.github.com/repos/douggreenak/Mavlink-Hub/releases/latest';
 const PAGE = 'https://github.com/douggreenak/Mavlink-Hub/';
-const TOP = 'MAVLink Hub', MAC_APP = 'MAVLink Hub.app';
-const ASSET = { win32: 'MAVLink-Hub-Windows.zip', darwin: 'MAVLink-Hub-Mac.zip' };
+const MAC_APP = 'MAVLink Hub.app';
+const ASSET = { win32: 'MAVLink-Hub-Setup.exe', darwin: 'MAVLink-Hub.dmg' };
 const RELAUNCH_MARKER = path.join(os.tmpdir(), 'mavlink-hub-relaunch');   // the Mac app reads this on its way out (see mac/HubWindow.swift)
 
 const parts = (v) => String(v).replace(/^v/i, '').split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
@@ -86,35 +87,36 @@ async function downloadTo(url, file, { onProgress, ...o } = {}) {
 }
 
 // ---- Windows: the helper that does the swap once nothing is using the files ----
-const WINDOWS_HELPER = `# Applies a MAVLink Hub update. Started (hidden) by the hub itself; it waits for the hub and its window to close first.
-param([string]$Zip, [string]$Dest, [int]$HubPid, [int]$OwnerPid, [string]$Version)
+const WINDOWS_HELPER = `# Applies a MAVLink Hub update. Started (hidden) by the hub itself; it waits for the hub and its window to close first,
+# then runs the same installer people install from, silently, over this copy.
+param([string]$Setup, [string]$Dest, [int]$HubPid, [int]$OwnerPid)
 Add-Type -AssemblyName System.Windows.Forms
 function Fail([string]$m) { [System.Windows.Forms.MessageBox]::Show($m, 'MAVLink Hub update', 'OK', 'Warning') | Out-Null; exit 1 }
 function Wait-Gone([int]$p, [int]$sec) { if ($p -le 0) { return }; try { Wait-Process -Id $p -Timeout $sec -ErrorAction Stop } catch { } }
 Wait-Gone $HubPid 30
 if ($OwnerPid -gt 0) { Start-Sleep -Milliseconds 800; Stop-Process -Id $OwnerPid -Force -ErrorAction SilentlyContinue; Wait-Gone $OwnerPid 15 }
-Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($Dest, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force -ErrorAction SilentlyContinue
-$tmp = Join-Path ([IO.Path]::GetTempPath()) ('mavlink-hub-update-' + [guid]::NewGuid().ToString('N'))
-try { Expand-Archive -LiteralPath $Zip -DestinationPath $tmp -Force } catch { Fail ("The update could not be unpacked: " + $_.Exception.Message) }
-$src = Join-Path $tmp '${TOP}'
-if (-not (Test-Path (Join-Path $src 'server.js'))) { Fail 'The downloaded update does not look like MAVLink Hub, so it was not installed.' }
-robocopy $src $Dest /E /R:15 /W:2 /NFL /NDL /NJH /NJS /NP /XF hub.env | Out-Null
-if ($LASTEXITCODE -ge 8) { Fail 'Some files could not be replaced (is another program using the MAVLink Hub folder?). Close it and download the update again.' }
-$key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MAVLinkHub'   # keep Apps & features showing the right version
-if ($Version -and (Test-Path $key)) { Set-ItemProperty -Path $key -Name DisplayVersion -Value $Version -ErrorAction SilentlyContinue }
-Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
-Remove-Item -Force $Zip -ErrorAction SilentlyContinue
-Start-Process -FilePath (Join-Path $Dest 'MAVLink Hub.bat') -WorkingDirectory $Dest
+# /S = silent, /D= = install into this very folder (it must be the last argument and is not quoted)
+$p = Start-Process -FilePath $Setup -ArgumentList "/S /D=$Dest" -Wait -PassThru
+if ($p.ExitCode -ne 0) { Fail 'The update could not be installed (is another program using the MAVLink Hub folder?). Close it and try again from the MAVLink Hub window.' }
+Remove-Item -Force $Setup -ErrorAction SilentlyContinue
+Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -WorkingDirectory $Dest -WindowStyle Hidden -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $Dest 'launcher.ps1') + '"')
 `;
 
 // ---- Mac: unpack beside the app, then swap the bundles. Running programs keep the files they already opened. ----
-const dittoExtract = (zip, dest) => new Promise((resolve, reject) => execFile('/usr/bin/ditto', ['-x', '-k', zip, dest], (e) => (e ? reject(e) : resolve())));
-async function swapMacApp({ zip, app, extract = dittoExtract, now = Date.now }) {
+const run = (cmd, args) => new Promise((resolve, reject) => execFile(cmd, args, (e, out) => (e ? reject(e) : resolve(out))));
+// Copy MAVLink Hub.app out of the disk image into `dest` (the image is opened read-only, without a Finder window, and closed again).
+async function dmgExtract(dmg, dest) {
+  const mnt = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-dmg-'));
+  await run('/usr/bin/hdiutil', ['attach', '-nobrowse', '-readonly', '-noverify', '-noautoopen', '-mountpoint', mnt, dmg]);
+  try { await run('/usr/bin/ditto', [path.join(mnt, MAC_APP), path.join(dest, MAC_APP)]); }
+  finally { await run('/usr/bin/hdiutil', ['detach', '-force', mnt]).catch(() => {}); try { fs.rmdirSync(mnt); } catch (e) { /* still mounted: leave it */ } }
+}
+async function swapMacApp({ dmg, app, extract = dmgExtract, now = Date.now }) {
   const parent = path.dirname(app), stage = path.join(parent, '.MAVLink Hub update ' + now());
   try {
     fs.mkdirSync(stage, { recursive: true });
-    await extract(zip, stage);
-    const fresh = path.join(stage, TOP, MAC_APP);
+    await extract(dmg, stage);
+    const fresh = path.join(stage, MAC_APP);
     if (!fs.existsSync(path.join(fresh, 'Contents', 'Resources', 'app', 'server.js'))) throw new Error('The downloaded update does not look like MAVLink Hub, so it was not installed.');
     const old = app + '.old-' + now();
     fs.renameSync(app, old);
@@ -147,9 +149,9 @@ function createUpdater(o) {
       if (!/^v?\d+\.\d+(\.\d+)?/.test(tag)) throw new Error('GitHub sent an answer I could not read');
       const latest = tag.replace(/^v/i, ''), list = Array.isArray(rel.assets) ? rel.assets : [];
       const find = (n) => list.find((a) => a && a.name === n && typeof a.browser_download_url === 'string');
-      assets = { zip: find(ASSET[platform]), sums: find('SHA256SUMS.txt') };
+      assets = { pkg: find(ASSET[platform]), sums: find('SHA256SUMS.txt') };
       const newer = compareVersions(latest, version) > 0, html = String(rel.html_url || '');
-      const missing = newer && how.kind && !(assets.zip && assets.sums);
+      const missing = newer && how.kind && !(assets.pkg && assets.sums);
       last = now();
       change({ status: newer ? 'available' : 'uptodate', latest, url: html.startsWith(PAGE) || allowHttp ? html : PAGE + 'releases/latest', notes: String(rel.body || '').slice(0, 800),
         checkedAt: last, pct: 0, canInstall: !!how.kind && !missing, reason: missing ? 'This release has no download for your computer yet. Try again later.' : how.reason || null });
@@ -159,26 +161,26 @@ function createUpdater(o) {
   const checkIfStale = () => { if (!disabled && (!last || now() - last > 6 * 3600e3) && state.status !== 'checking') return check(); };
 
   async function install() {
-    if (state.status !== 'available' || !state.canInstall || !assets || !assets.zip || !assets.sums) throw new Error('There is no update ready to install.');
-    if (!ok(assets.zip.browser_download_url) || !ok(assets.sums.browser_download_url)) throw new Error('The download address is not one this app trusts.');
-    const zip = path.join(dataDir, 'updates', assets.zip.name);
+    if (state.status !== 'available' || !state.canInstall || !assets || !assets.pkg || !assets.sums) throw new Error('There is no update ready to install.');
+    if (!ok(assets.pkg.browser_download_url) || !ok(assets.sums.browser_download_url)) throw new Error('The download address is not one this app trusts.');
+    const file = path.join(dataDir, 'updates', assets.pkg.name);
     try {
       change({ status: 'downloading', pct: 0, error: null });
-      const want = parseSums(await readText(assets.sums.browser_download_url, { allowHttp }))[assets.zip.name];
-      if (!want) throw new Error('The release has no checksum for ' + assets.zip.name);
+      const want = parseSums(await readText(assets.sums.browser_download_url, { allowHttp }))[assets.pkg.name];
+      if (!want) throw new Error('The release has no checksum for ' + assets.pkg.name);
       let tick = 0;
-      const got = await downloadTo(assets.zip.browser_download_url, zip, { allowHttp, onProgress: (n, t) => { if (t && now() - tick > 250) { tick = now(); change({ pct: Math.min(99, Math.round(n / t * 100)) }); } } });
-      if (got.sha256 !== want) { try { fs.unlinkSync(zip); } catch (e) { /* gone */ } throw new Error('The download is damaged (its checksum does not match), so it was not installed.'); }
+      const got = await downloadTo(assets.pkg.browser_download_url, file, { allowHttp, onProgress: (n, t) => { if (t && now() - tick > 250) { tick = now(); change({ pct: Math.min(99, Math.round(n / t * 100)) }); } } });
+      if (got.sha256 !== want) { try { fs.unlinkSync(file); } catch (e) { /* gone */ } throw new Error('The download is damaged (its checksum does not match), so it was not installed.'); }
       change({ status: 'installing', pct: 100 });
       if (how.kind === 'windows') {
         const script = path.join(dataDir, 'updates', 'apply-update.ps1');
         fs.writeFileSync(script, WINDOWS_HELPER);
-        const c = spawnFn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script, '-Zip', zip, '-Dest', how.dir, '-HubPid', String(pid), '-OwnerPid', String(ownerPid), '-Version', state.latest],
+        const c = spawnFn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script, '-Setup', file, '-Dest', how.dir, '-HubPid', String(pid), '-OwnerPid', String(ownerPid)],
           { detached: true, stdio: 'ignore', windowsHide: true });
         if (c.on) c.on('error', () => {}); if (c.unref) c.unref();
       } else {
-        await swapMacApp({ zip, app: how.app, extract, now });
-        try { fs.unlinkSync(zip); } catch (e) { /* kept for the next try */ }
+        await swapMacApp({ dmg: file, app: how.app, extract, now });
+        try { fs.unlinkSync(file); } catch (e) { /* kept for the next try */ }
         fs.writeFileSync(marker, how.app);
       }
       change({ status: 'restarting' });
@@ -188,4 +190,4 @@ function createUpdater(o) {
   return { state: () => ({ ...state }), check, checkIfStale, install, how };
 }
 
-module.exports = { createUpdater, installKind, compareVersions, parseSums, downloadTo, readText, swapMacApp, removeOldCopies, WINDOWS_HELPER, RELAUNCH_MARKER, API, PAGE, ASSET };
+module.exports = { createUpdater, installKind, compareVersions, parseSums, downloadTo, readText, swapMacApp, dmgExtract, removeOldCopies, WINDOWS_HELPER, RELAUNCH_MARKER, API, PAGE, ASSET };

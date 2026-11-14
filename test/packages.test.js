@@ -235,11 +235,14 @@ test('the Windows installer script: per-user, shortcuts that start the launcher 
   assert.ok(!/\$_\./.test(nsi.replace(/\$\$_/g, '')), 'PowerShell variables are escaped for NSIS');
 });
 
-test('the in-app updater and the release agree on the file names', () => {
+test('a release has one download per system, and the in-app updater downloads those same files', () => {
   const U = require('../updater.js'), wf = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
-  for (const f of Object.values(U.ASSET).concat(['SHA256SUMS.txt', 'MAVLink-Hub-Setup.exe', 'MAVLink-Hub.dmg'])) assert.ok(wf.includes(f), f + ' is attached to the release');
+  assert.deepEqual(U.ASSET, { win32: 'MAVLink-Hub-Setup.exe', darwin: 'MAVLink-Hub.dmg' });
+  const files = wf.match(/gh release create[\s\S]*?--title/)[0];
+  for (const f of ['MAVLink-Hub-Setup.exe', 'MAVLink-Hub.dmg', 'SHA256SUMS.txt']) assert.ok(files.includes(f), f + ' is attached to the release');
+  assert.ok(!/\.zip/.test(files), 'no second (ZIP) download per system');
   const b = fs.readFileSync(path.join(ROOT, 'tools', 'build-packages.js'), 'utf8');
-  for (const f of Object.values(U.ASSET)) assert.ok(b.includes(f.replace('-Windows.zip', '').replace('-Mac.zip', '')), 'the build makes ' + f);
+  assert.ok(b.includes('MAVLink-Hub-Setup.exe') && b.includes('MAVLink-Hub.dmg'), 'the build makes both');
   assert.match(fs.readFileSync(path.join(ROOT, 'launcher.ps1'), 'utf8'), /HUB_OWNER_PID = \$PID/, 'the hub can close the window when it installs an update');
   assert.match(fs.readFileSync(path.join(ROOT, 'MAVLink Hub.app', 'Contents', 'MacOS', 'MAVLink Hub'), 'utf8'), /export HUB_OWNER_PID/);
   assert.ok(fs.readFileSync(path.join(ROOT, 'mac', 'HubWindow.swift'), 'utf8').includes(path.basename(U.RELAUNCH_MARKER)), 'the Mac window reads the same relaunch marker the updater writes');

@@ -9,15 +9,15 @@ phone on the same network opens a live dashboard in the browser.
   the bytes out to any number of browsers over Server-Sent Events.
 - **Works offline.** Map tiles are cached on disk the first time they are viewed, and
   whole areas can be downloaded ahead of a trip from the *Offline* tab.
-- **Nothing to install.** Download, unzip, double-click: the download includes its own Node.js. Leaflet and
+- **Nothing to install.** Download, install, open: the download includes its own Node.js. Leaflet and
   the QR library are bundled too, so it even works without internet.
 
 Jump to [Setting up a hub laptop](#setting-up-a-hub-laptop-windows).
 
 <table align="center">
 <tr>
-<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Setup.exe"><img src="docs/buttons/download-windows.svg" alt="Download for Windows" width="300"></a><br><sub>An installer, about 37 MB. Run it; MAVLink Hub appears in your Start menu. (<a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Windows.zip">Portable ZIP</a>)</sub></td>
-<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub.dmg"><img src="docs/buttons/download-mac.svg" alt="Download for Mac" width="300"></a><br><sub>A disk image, about 88 MB, Apple Silicon and Intel. Open it and drag MAVLink Hub to Applications. (<a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Mac.zip">Portable ZIP</a>)</sub></td>
+<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Setup.exe"><img src="docs/buttons/download-windows.svg" alt="Download for Windows" width="300"></a><br><sub>An installer, about 37 MB. Run it; MAVLink Hub appears in your Start menu.</sub></td>
+<td align="center" width="50%"><a href="https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub.dmg"><img src="docs/buttons/download-mac.svg" alt="Download for Mac" width="300"></a><br><sub>A disk image, about 88 MB, Apple Silicon and Intel. Open it and drag MAVLink Hub to Applications.</sub></td>
 </tr>
 </table>
 
@@ -54,9 +54,6 @@ Node.js is included. If Windows SmartScreen says it protected your PC, click **M
 is not code-signed; see the checksums below if you want to verify it). To remove it, use *Settings → Apps → MAVLink Hub*;
 it asks whether to keep your saved maps and settings.
 
-Prefer no installer? The [portable ZIP](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Windows.zip)
-unzips anywhere (for example `C:\MAVLink Hub`) and runs from there with **MAVLink Hub.bat**.
-
 ### 2. Start it for the first time
 
 1. Double-click **MAVLink Hub.bat**. If Windows SmartScreen says it protected your PC,
@@ -87,7 +84,7 @@ Same idea, with a Mac app instead of the batch file.
 1. Click **Download for Mac** at the top of this page (or [this link](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub.dmg)),
    open **MAVLink-Hub.dmg** and drag **MAVLink Hub** onto the **Applications** folder beside it. It works on both Apple
    Silicon and Intel Macs, and everything, including Node.js, is inside the one app. (Run it from the disk image or Downloads
-   instead and it offers to move itself to Applications. The [portable ZIP](https://github.com/douggreenak/Mavlink-Hub/releases/latest/download/MAVLink-Hub-Mac.zip) holds the same app.)
+   instead and it offers to move itself to Applications.)
 2. Double-click **MAVLink Hub.app**. The first time, macOS may refuse because it was downloaded: right-click the
    app and choose **Open**, then **Open** again. If it still refuses, open *System Settings → Privacy & Security*
    and click **Open Anyway**.
@@ -444,22 +441,23 @@ to point it at another machine.
 
 ## Building the downloads
 
-The two ZIPs are built by one script and are not stored in the repository (they are large):
+The two downloads, the Windows installer and the Mac disk image, are built by one script and are not stored in the repository (they are large):
 
 ```bash
 node tools/build-packages.js            # both, with the current Node LTS, into dist/
 node tools/build-packages.js --only mac # one of them
 node tools/build-packages.js --node v24.22.2
+node tools/build-packages.js --zips     # also a portable ZIP of each, for trying a build locally
 ```
 
 It copies the app and the right launchers for each system, adds Node.js straight from nodejs.org, and refuses to
 use a download whose SHA-256 does not match nodejs.org's published list. The official Node binaries are used
 untouched, so their signatures stay valid (the Mac package holds one for Apple Silicon and one for Intel; the
-launcher picks the right one). `dist/SHA256SUMS.txt` lists the checksum of each ZIP. Needs `zip`, `unzip` and `tar`.
+launcher picks the right one). `dist/SHA256SUMS.txt` lists the checksum of each download, and the in-app updater checks against it. Needs `unzip` and `tar`.
 
 The Windows installer is built with [NSIS](https://nsis.sourceforge.io) (`brew install makensis`) and the Mac disk image with `hdiutil`,
-so a full build runs on a Mac; elsewhere `--no-installers` makes just the ZIPs. To publish a version, push a tag; a GitHub Action builds the packages and attaches them to a release, which is what
-the download buttons point at:
+so a full build runs on a Mac; elsewhere `--no-installers` makes just the app folders (with `--zips`, as ZIPs). To publish a version, push a tag; a GitHub Action
+builds the installer and disk image and attaches them (and the checksums) to a release, which is what the download buttons point at:
 
 ```bash
 git tag v1.0.0
