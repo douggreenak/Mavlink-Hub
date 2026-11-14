@@ -70,7 +70,7 @@ async function main() {
   const logFile = path.join(dataDir, 'hub.log'), fd = fs.openSync(logFile, 'w');
   const child = spawn(process.execPath, [path.join(HERE, 'server.js')], { cwd: HERE, detached: true, stdio: ['ignore', fd, fd], windowsHide: true, env: { ...process.env, HUB_LOG: logFile } });
   let exited = false; child.on('exit', () => { exited = true; }); child.on('error', () => { exited = true; });
-  for (let i = 0; i < 75; i++) {
+  for (let i = 0; i < 225; i++) {                              // up to about 45 s: a first start on a fresh PC can be slow while antivirus checks node
     if (await hubRunning(port, 600)) { child.unref(); openWindow(url, dataDir); console.log('HUB_PORT=' + port); return 0; }
     if (exited) break;
     await sleep(200);

@@ -343,6 +343,15 @@ function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migra
         ...(launcherDeps.open ? { open: launcherDeps.open } : {}), ...(launcherDeps.spawnSim ? { spawnSim: launcherDeps.spawnSim } : {}),
         ...(launcherDeps.graceMs != null ? { graceMs: launcherDeps.graceMs } : {}),
       });
+      // The app window (Windows app, Mac app) sets HUB_EXIT_WITH to its own process id: if that program ends for any reason (closed,
+      // crashed, killed) the hub stops too, so it is never left running in the background.
+      const owner = +process.env.HUB_EXIT_WITH || 0;
+      if (owner > 0) {
+        const watch = setInterval(() => {
+          try { process.kill(owner, 0); } catch (e) { if (e.code === 'ESRCH') { launcher.shutdown(); process.exit(0); } }
+        }, 2000);
+        watch.unref();
+      }
       resolve({
         udp, web, launcher,
         close: () => new Promise((done) => {

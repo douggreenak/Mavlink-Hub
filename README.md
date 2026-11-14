@@ -58,7 +58,7 @@ it asks whether to keep your saved maps and settings.
 
 1. Double-click **MAVLink Hub.bat**. If Windows SmartScreen says it protected your PC,
    click **More info → Run anyway**; the file is a plain script you can open in Notepad.
-2. The hub starts quietly (there is no black console window; it stops when you close the window) and the
+2. The **MAVLink Hub** app opens straight away with a spinner while the hub starts quietly behind it (there is no black console window; closing the app stops the hub) and the
    **MAVLink Hub** window opens, showing whether the aircraft is connected, the addresses
    for phones, and the buttons you need. See [The launcher window](#the-launcher-window).
 3. The first time, Windows Defender Firewall asks whether to allow **Node.js** to
@@ -203,7 +203,7 @@ window. Open it again at any time: it finds the running hub and just shows the w
 
 **How it works.** The window is a web page served by the hub itself (`launcher.html`). In the downloads it is shown in the
 app's own window: a native window on the Mac (its own Dock icon, name and menu; closing it or quitting the app stops the hub),
-and a WebView2 window on Windows (the Edge engine that comes with Windows 10 and 11; closing it stops the hub).
+and **MAVLink Hub.exe** on Windows, a real app with its own icon and taskbar button (it shows the page in a WebView2 control, the Edge engine that comes with Windows 10 and 11; closing it stops the hub). Right-click its taskbar button and choose *Pin to taskbar* to keep it there.
 If that is not possible it falls back to an app-style Edge, Chrome, Brave or Chromium window (with its own small profile, so
 your normal browser is untouched), or your default browser. A short script, `launcher.js`, does the starting;
 `MAVLink Hub.bat` (with `launcher.ps1`) and `MAVLink Hub.app` just check that Node.js is available, run it, show the window,

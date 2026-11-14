@@ -205,7 +205,7 @@ test('the Mac app gets its own native window: compiled for both Mac types, and t
   assert.match(info, /arm64/); assert.match(info, /x86_64/);
   assert.ok(fs.statSync(exe).mode & 0o100, 'executable');
   const script = fs.readFileSync(path.join(root, MAC_APP, 'Contents', 'MacOS', 'MAVLink Hub'), 'utf8');
-  assert.match(script, /exec "\$HELPER" "\$PORT"/); assert.match(script, /hubwindow/);
+  assert.match(script, /exec "\$HELPER" --state "\$STATE"/, 'the window opens at once and the hub starts alongside'); assert.match(script, /export HUB_EXIT_WITH=\$\$/); assert.match(script, /hubwindow/);
   assert.match(fs.readFileSync(path.join(root, MAC_APP, 'Contents', 'Info.plist'), 'utf8'), /NSAllowsLocalNetworking/);
 });
 
@@ -248,4 +248,19 @@ test('a release has one download per system, and the in-app updater downloads th
   assert.match(fs.readFileSync(path.join(ROOT, 'launcher.ps1'), 'utf8'), /HUB_OWNER_PID = \$PID/, 'the hub can close the window when it installs an update');
   assert.match(fs.readFileSync(path.join(ROOT, 'MAVLink Hub.app', 'Contents', 'MacOS', 'MAVLink Hub'), 'utf8'), /export HUB_OWNER_PID/);
   assert.ok(fs.readFileSync(path.join(ROOT, 'mac', 'HubWindow.swift'), 'utf8').includes(path.basename(U.RELAUNCH_MARKER)), 'the Mac window reads the same relaunch marker the updater writes');
+});
+
+test('the Windows app: the installer shortcuts run MAVLink Hub.exe (so it can be pinned), with the PowerShell launcher only as a fallback', () => {
+  const o = { version: '1.3.0', srcDir: 'C:\\stage', outFile: 'C:\\o.exe', icon: 'C:\\i.ico' };
+  const withExe = B.nsisScript({ ...o, hasExe: true }), without = B.nsisScript(o);
+  assert.match(withExe, /CreateShortcut "\$DESKTOP\\MAVLink Hub\.lnk" "\$INSTDIR\\MAVLink Hub\.exe" ""/);
+  assert.match(withExe, /CreateShortcut "\$SMPROGRAMS\\MAVLink Hub\\MAVLink Hub\.lnk" "\$INSTDIR\\MAVLink Hub\.exe"/);
+  assert.match(withExe, /Function LaunchHub\s+Exec "\$INSTDIR\\MAVLink Hub\.exe"/);
+  assert.ok(!/powershell\.exe" '-NoProfile/.test(withExe.replace(/nsExec[^\n]*/g, '')), 'no PowerShell launcher in the shortcuts');
+  assert.match(without, /launcher\.ps1"' "\$INSTDIR\\assets\\hub\.ico" 0 SW_SHOWMINIMIZED/, 'a local build without the exe still gets working shortcuts');
+  const src = fs.readFileSync(path.join(ROOT, 'windows', 'HubWindow.cs'), 'utf8');
+  for (const bit of ['HUB_EXIT_WITH', 'HUB_OWNER_PID', 'LAUNCHER_NO_WINDOW', '/launcher/stop', 'HUB_PORT=', 'runtime', 'webview2', 'Starting MAVLink Hub', 'FormClosing']) assert.ok(src.includes(bit), 'HubWindow.cs handles ' + bit);
+  assert.match(fs.readFileSync(path.join(ROOT, 'MAVLink Hub.bat'), 'utf8'), /MAVLink Hub\.exe/, 'the .bat opens the app when it is there');
+  assert.match(require('../updater.js').WINDOWS_HELPER, /MAVLink Hub\.exe/, 'an update reopens the app');
+  assert.match(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8'), /--build-exe[\s\S]*--exe "dist-exe\/MAVLink Hub\.exe"/, 'the release compiles the app on Windows and packages it');
 });

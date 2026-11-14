@@ -82,10 +82,17 @@ fi
 export HUB_OWNER_PID=$$       # the hub tells the app to reopen itself after installing an update (see the end of this script and hubwindow)
 HELPER="$APP/Contents/MacOS/hubwindow"
 if [ -x "$HELPER" ] && [ -z "$LAUNCHER_NO_WINDOW" ]; then
-  OUT="$(LAUNCHER_NO_WINDOW=1 "$NODE" launcher.js 2>&1)" || { show "$OUT"; exit 1; }
-  PORT="$(printf '%s\n' "$OUT" | sed -n 's/^HUB_PORT=//p' | tail -1)"
-  [ -n "$PORT" ] && exec "$HELPER" "$PORT"
-  exit 0
+  # The window opens at once with a spinner; the hub starts alongside and reports through a small state file the window reads.
+  # HUB_EXIT_WITH makes the hub stop by itself if this app ends for any reason, so it is never left running in the background.
+  STATE="$(mktemp -t mavlink-hub-state)"; rm -f "$STATE"
+  export HUB_EXIT_WITH=$$
+  (
+    OUT="$(LAUNCHER_NO_WINDOW=1 "$NODE" launcher.js 2>&1)"; CODE=$?
+    PORT="$(printf '%s\n' "$OUT" | sed -n 's/^HUB_PORT=//p' | tail -1)"
+    if [ "$CODE" -eq 0 ] && [ -n "$PORT" ]; then printf 'port=%s\n' "$PORT" > "$STATE.tmp"; else printf 'error=%s\n' "$OUT" > "$STATE.tmp"; fi
+    mv "$STATE.tmp" "$STATE"
+  ) &
+  exec "$HELPER" --state "$STATE"
 fi
 OUT="$("$NODE" launcher.js 2>&1)" || { show "$OUT"; exit 1; }
 

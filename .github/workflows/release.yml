@@ -9,12 +9,31 @@ on:
 permissions:
   contents: write
 jobs:
+  # The Windows app ("MAVLink Hub.exe") is compiled on Windows with the .NET Framework compiler that comes with it.
+  windows-app:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - run: node tools/build-packages.js --build-exe "dist-exe/MAVLink Hub.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-app
+          path: dist-exe/MAVLink Hub.exe
+          if-no-files-found: error
   package:
+    needs: windows-app
     runs-on: macos-latest
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-app
+          path: dist-exe
       - name: Is there already a release for this tag?
         id: check
         run: |
@@ -29,7 +48,7 @@ jobs:
         name: Install NSIS (builds the Windows installer)
         run: brew install makensis
       - if: steps.check.outputs.exists != 'true'
-        run: node tools/build-packages.js --require-installers
+        run: node tools/build-packages.js --require-installers --exe "dist-exe/MAVLink Hub.exe"
       - if: steps.check.outputs.exists != 'true' && github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:

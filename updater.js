@@ -99,7 +99,9 @@ if ($OwnerPid -gt 0) { Start-Sleep -Milliseconds 800; Stop-Process -Id $OwnerPid
 $p = Start-Process -FilePath $Setup -ArgumentList "/S /D=$Dest" -Wait -PassThru
 if ($null -ne $p.ExitCode -and $p.ExitCode -ne 0) { Fail 'The update could not be installed (is another program using the MAVLink Hub folder?). Close it and try again from the MAVLink Hub window.' }
 Remove-Item -Force $Setup -ErrorAction SilentlyContinue
-Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -WorkingDirectory $Dest -WindowStyle Hidden -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $Dest 'launcher.ps1') + '"')
+$app = Join-Path $Dest 'MAVLink Hub.exe'
+if (Test-Path $app) { Start-Process -FilePath $app -WorkingDirectory $Dest }
+else { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -WorkingDirectory $Dest -WindowStyle Hidden -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $Dest 'launcher.ps1') + '"') }
 `;
 
 // ---- Mac: unpack beside the app, then swap the bundles. Running programs keep the files they already opened. ----
