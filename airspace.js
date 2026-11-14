@@ -232,7 +232,26 @@ function createAirspace({ dir, fetchJSON, now = Date.now, faaBase = FAA, tfrBase
     await Promise.all(layers.map(async (id) => { out[id] = id === 'local' ? local(box) : await layer(id, box); }));
     return { layers: out, advisory: 'Advisory only. Data may be out of date or incomplete; check official sources (FAA B4UFLY, NOTAMs) before flying.' };
   }
-  return { query, cellsFor, local };
+  // ---- saving an area ahead of time (the Offline tab's download): every layer's cells covering `box`, so it all works without internet ----
+  const PREFETCH_MAX_CELLS = 800;
+  const cellList = (box) => Object.keys(LAYERS).flatMap((layer) => cellsFor(box, LAYERS[layer].cell).map((c) => ({ layer, c })));
+  const cellIsSaved = ({ layer, c }) => LAYERS[layer].sources.every((_, i) => { const x = readCache(cacheFile(layer, c, i)); return x && now() - x.fetched < LAYERS[layer].ttl; });
+  // How much there is to fetch: cells in total, and how many are not saved yet (or have gone stale).
+  function plan(box) { const list = cellList(box); return { cells: list.length, missing: list.filter((x) => !cellIsSaved(x)).length, tooBig: list.length > PREFETCH_MAX_CELLS }; }
+  // Fetch and save them. `step(ok)` is called as each cell finishes; `cancelled()` stops early. Returns { done, failed }.
+  async function prefetch(box, { step = () => {}, cancelled = () => false } = {}) {
+    const list = cellList(box).filter((x) => !cellIsSaved(x));
+    let done = 0, failed = 0;
+    if (list.length > PREFETCH_MAX_CELLS || !remote) return { done, failed: remote ? list.length : 0, skipped: true };
+    await mapLimit(list, concurrency, async (x) => {
+      if (cancelled()) return;
+      const r = await getCell(x.layer, x.c);
+      if (r.error && r.fetched == null) failed++; else done++;
+      step(!(r.error && r.fetched == null));
+    });
+    return { done, failed };
+  }
+  return { query, cellsFor, local, plan, prefetch };
 }
 
 module.exports = { createAirspace, normalizeFeature, cellsFor, feet, altTxt, titleCase, geomBBox, LAYERS, LAYER_IDS, FAA, TFR_WFS };

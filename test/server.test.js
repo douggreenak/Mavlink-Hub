@@ -181,7 +181,7 @@ test('bulk download: runs, reports progress, refuses a second job, then shows up
   assert.equal(second.error, 'A map download is already running');
   await until(async () => !(await getJSON('/precache/status')).running);
   const st = await getJSON('/precache/status');
-  assert.deepEqual(st, { done: 4, total: 4, running: false, failed: 0, cancel: false });
+  assert.deepEqual(st, { done: 4, total: 4, running: false, failed: 0, cancel: false, phase: 'Map tiles' });
   for (const [x, y] of [[0, 0], [0, 1], [1, 0], [1, 1]]) {
     assert.ok(fs.existsSync(path.join(process.env.DATA_DIR, 'cache', 'tiles', 'street', '1', String(x), String(y))));
   }
@@ -214,6 +214,24 @@ test('POST /cache/clear with an area removes just that area at those zooms', asy
   // put them back for the tests that follow
   await getJSON('/precache?layer=street&w=-180&e=180&s=-85&n=85&z0=1&z1=1');
   await until(async () => !(await getJSON('/precache/status')).running);
+});
+
+test('a download can also save the terrain for the area (zoom 9-12) and says what it is doing', async () => {
+  await until(async () => !(await getJSON('/precache/status')).running);
+  const q = 'w=-147.8&e=-147.7&s=64.8&n=64.85&z0=3&z1=3';
+  const plan = await getJSON('/precache/plan?layer=street&' + q + '&extras=terrain');
+  const terrainN = S.countOf(S.ranges({ w: -147.8, e: -147.7, s: 64.8, n: 64.85 }, 9, 12));
+  assert.equal(plan.total, 1); assert.equal(plan.terrain.total, terrainN, 'every tile at zoom 9 to 12 that the area touches'); const have = S.listOf(S.ranges({ w: -147.8, e: -147.7, s: 64.8, n: 64.85 }, 9, 12)).filter(([z, x, y]) => fs.existsSync(S.tileFile('terrain', z, x, y))).length;
+  assert.equal(plan.terrain.missing, terrainN - have, 'tiles saved earlier are not counted again');
+  assert.equal(plan.airspace, undefined, 'airspace is switched off in the tests');
+  const start = await getJSON('/precache?layer=street&' + q + '&extras=terrain');
+  assert.equal(start.total, 1 + terrainN);
+  await until(async () => !(await getJSON('/precache/status')).running);
+  const st = await getJSON('/precache/status');
+  assert.equal(st.done, 1 + terrainN); assert.equal(st.failed, 0); assert.equal(st.phase, 'Terrain');
+  const z12 = fs.readdirSync(path.join(process.env.DATA_DIR, 'cache', 'tiles', 'terrain', '12'));
+  assert.ok(z12.length >= 1, 'the detailed terrain tile is saved with the maps');
+  assert.equal((await getJSON('/precache/plan?layer=street&' + q + '&extras=terrain')).terrain.missing, 0, 'and now counts as saved');
 });
 
 test('bulk download counts failures and can be cancelled', async () => {

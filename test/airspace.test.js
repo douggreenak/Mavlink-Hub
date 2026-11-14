@@ -299,3 +299,28 @@ test('the spinner works even before the map exists (the button ring shows, nothi
   D.busy(1); await sleep(380); assert.equal(el('asb').classList.contains('loading'), true);
   const e = { style: { display: 'none' } }; D.setBusyEl(e); D.busy(0); D.busy(-1); assert.equal(el('asb').classList.contains('loading'), false);
 });
+
+test('saving an area ahead of time: plan counts what is missing, prefetch fetches and saves it, and it then works with the FAA unreachable', async () => {
+  hits = { _urls: [] }; mode = 'ok';
+  const dir = tmp(), box = { w: -147.76, e: -147.70, s: 64.82, n: 64.86 };
+  const svc = A.createAirspace({ dir, fetchJSON: (u) => new Promise((resolve, reject) => http.get(u, (r) => { let b = ''; r.on('data', (c) => (b += c)); r.on('end', () => { try { resolve(JSON.parse(b)); } catch (e) { reject(e); } }); }).on('error', reject)), faaBase: base + '/arcgis', tfrBase: base + '/tfr', now: () => T });
+  const p = svc.plan(box);
+  assert.ok(p.cells >= 5 && p.missing === p.cells && !p.tooBig, 'every layer has cells covering the area, none saved yet');
+  let steps = 0;
+  const r = await svc.prefetch(box, { step: () => { steps++; } });
+  assert.equal(r.failed, 0); assert.equal(r.done, p.cells); assert.equal(steps, p.cells);
+  assert.equal(svc.plan(box).missing, 0, 'all saved');
+  const before = hits._urls.length; mode = 'down';
+  const q = await svc.query(['controlled', 'special', 'uasfm', 'sites'], box);
+  assert.equal(hits._urls.length, before, 'served from what was saved, without asking the FAA');
+  assert.ok(Object.values(q.layers).every((l) => !l.errors.length), 'no error: the area works offline');
+});
+test('prefetch with the FAA unreachable reports failures instead of pretending, and a huge area is refused', async () => {
+  hits = { _urls: [] }; mode = 'down';
+  const svc = A.createAirspace({ dir: tmp(), fetchJSON: (u) => Promise.reject(new Error('offline')), now: () => T });
+  const box = { w: -147.76, e: -147.70, s: 64.82, n: 64.86 }, p = svc.plan(box);
+  const r = await svc.prefetch(box);
+  assert.equal(r.done, 0); assert.equal(r.failed, p.cells);
+  const huge = { w: -170, e: -100, s: 20, n: 70 };
+  assert.equal(svc.plan(huge).tooBig, true); assert.equal((await svc.prefetch(huge)).skipped, true);
+});

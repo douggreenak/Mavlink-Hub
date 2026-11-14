@@ -71,6 +71,25 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 let settings = { units: 'metric', hidden: [] };
 function loadSettings() { try { settings = { units: 'metric', hidden: [], ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) }; } catch (e) {} }
 loadSettings();
+// ---- Demo flight, run by the hub: every screen connected to this hub sees the same simulated flight ----
+// It is the test-flight simulator (sim/inav-sim.js) feeding the same stream a real aircraft would. Real telemetry always wins:
+// the demo refuses to start while an aircraft is sending, and stops the moment real data arrives.
+let demo = null, realLast = 0;   // realLast: when an actual aircraft last sent something (the demo's own packets do not count)
+const DEMO_PROFILE = ['full', 'fast'];
+const demoEvent = () => `event: demo\ndata: ${JSON.stringify({ running: !!demo })}\n\n`;
+function startDemo() {
+  if (demo) return { ok: true, running: true };
+  if (realLast && Date.now() - realLast < 5000) return { error: 'An aircraft is sending telemetry right now, so the demo was not started.' };
+  const { createSim } = require('./sim/inav-sim.js'), sim = createSim(DEMO_PROFILE, { seed: 1 }), t0 = Date.now();
+  const timer = setInterval(() => {
+    for (const d of sim.advance((Date.now() - t0) / 1000)) { stats.packets++; stats.bytes += d.buf.length; stats.last = Date.now(); demo.fed = true; broadcast('data: ' + d.buf.toString('base64') + '\n\n'); }
+  }, 50);
+  demo = { sim, timer, fed: false };
+  broadcast(demoEvent());
+  return { ok: true, running: true };
+}
+function stopDemo() { if (!demo) return; clearInterval(demo.timer); demo = null; broadcast(demoEvent()); }
+process.on('exit', () => { if (demo) clearInterval(demo.timer); });
 const settingsEvent = () => `event: settings\ndata: ${JSON.stringify(settings)}\n\n`;
 
 // Send one SSE chunk to every dashboard. A viewer that has stopped reading (sleeping laptop,
@@ -149,7 +168,7 @@ function parsePlan(qs) {
   const z0 = Math.max(0, Math.floor(num('z0'))), z1 = Math.min(PRECACHE_MAX_ZOOM, Math.floor(num('z1')));
   if (!TILES[l] || Object.values(a).some(isNaN) || isNaN(z0) || isNaN(z1) || z0 > z1) return { error: 'Bad request' };
   const b = { w: Math.min(a.w, a.e), e: Math.max(a.w, a.e), s: Math.max(-85, Math.min(a.s, a.n)), n: Math.min(85, Math.max(a.s, a.n)) };
-  return { l, rs: ranges(b, z0, z1) };
+  return { l, rs: ranges(b, z0, z1), b };
 }
 const ls = (d) => { try { return fs.readdirSync(d); } catch (e) { return []; } };
 function summary(l) {
@@ -189,7 +208,13 @@ function clearArea(l, rs) {
   return n;
 }
 
-let job = { done: 0, total: 0, running: false, failed: 0, cancel: false };
+const EXTRA_MAX = MAX_TILES ? 1000 : 0;   // the most terrain tiles a download may add (0 = no limit)
+// What else a download should save for the same area: elevation (zoom 9-12, for the 3D view) and airspace. `extras=terrain,airspace`.
+function extrasOf(p, qs) {
+  const want = new Set((new URLSearchParams(qs).get('extras') || '').split(',').map((x) => x.trim()));
+  return { terrain: want.has('terrain') && p.l !== 'terrain' ? ranges(p.b, 9, 12) : null, airspace: want.has('airspace') && (process.env.AIRSPACE || 'on').toLowerCase() !== 'off' };
+}
+let job = { done: 0, total: 0, running: false, failed: 0, cancel: false, phase: '' };
 const json = (res, o) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -217,6 +242,7 @@ function handle(req, res) {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     res.write(': connected\n\n');
     res.write(settingsEvent());
+    res.write(demoEvent());
     viewers.add(res);
     req.on('close', () => viewers.delete(res));
   } else if ((m = url.match(/^\/tiles\/(street|sat|terrain)\/(\d+)\/(\d+)\/(\d+)$/))) {
@@ -228,31 +254,57 @@ function handle(req, res) {
     if (!fs.existsSync(f)) { res.writeHead(404).end(); return; }
     res.writeHead(200, { 'Content-Type': types[f.split('.').pop()] || 'application/octet-stream' });
     fs.createReadStream(f).pipe(res);
+  } else if (url === '/demo' || url === '/demo/start' || url === '/demo/stop') {
+    // Open to every screen on this hub, but a page on some other website must not be able to start it: a custom header and a
+    // same-origin check (a cross-origin page cannot send that header without a pre-flight the hub never approves).
+    if (url !== '/demo') {
+      const host = req.headers.host, origin = req.headers.origin;
+      if (req.method !== 'POST' || req.headers['x-hub'] !== '1' || (origin && origin !== 'http://' + host)) { res.writeHead(403).end('Forbidden'); return; }
+      if (url === '/demo/start') { const r = startDemo(); if (r.error) { res.writeHead(409, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(r)); } } else stopDemo();
+    }
+    json(res, { running: !!demo });
   } else if (url === '/precache/plan') {
     const p = parsePlan(qs);
     if (p.error) return json(res, { error: p.error });
     const total = countOf(p.rs);
     const missing = total <= 5000 ? listOf(p.rs).filter(([z, x, y]) => !fs.existsSync(tileFile(p.l, z, x, y))).length : null;
-    json(res, { total, missing, limit: MAX_TILES });
+    const out = { total, missing, limit: MAX_TILES }, ex = extrasOf(p, qs);
+    if (ex.terrain) out.terrain = { total: countOf(ex.terrain), missing: countOf(ex.terrain) <= 5000 ? listOf(ex.terrain).filter(([z, x, y]) => !fs.existsSync(tileFile('terrain', z, x, y))).length : null, limit: EXTRA_MAX };
+    if (ex.airspace) out.airspace = airspace.plan(p.b);
+    json(res, out);
   } else if (url === '/precache') {
     const p = parsePlan(qs);
     if (p.error) return json(res, { error: p.error });
     if (job.running) return json(res, { error: 'A map download is already running' });
     const total = countOf(p.rs);
     if (MAX_TILES && total > MAX_TILES) return json(res, { error: `That is ${total} tiles; the limit is ${MAX_TILES} per download (set MAX_TILES to change it). Shrink the area or lower the detail.` });
-    const list = listOf(p.rs);
-    job = { done: 0, total: list.length, running: true, failed: 0, cancel: false };
+    const list = listOf(p.rs), ex = extrasOf(p, qs), tlist = ex.terrain ? listOf(ex.terrain) : [], apl = ex.airspace ? airspace.plan(p.b) : null;
+    if (tlist.length && EXTRA_MAX && tlist.length > EXTRA_MAX) return json(res, { error: `The terrain for that area is ${tlist.length} tiles; the limit is ${EXTRA_MAX}. Shrink the area.` });
+    if (apl && apl.tooBig) return json(res, { error: 'That area is too big to save its airspace too. Shrink the area.' });
+    job = { done: 0, total: list.length + tlist.length + (apl ? apl.missing : 0), running: true, failed: 0, cancel: false, phase: 'Map tiles' };
     (async () => {
-      for (const [z, x, y] of list) {
-        if (job.cancel) break;
-        const f = tileFile(p.l, z, x, y), had = fs.existsSync(f);
-        try { await ensure(f, tileUrl(p.l, z, x, y)); } catch (e) { job.failed++; }
-        job.done++;
-        if (!had) await sleep(120);   // be polite to the tile server
-      }
+      const run = async (layer, items, phase) => {
+        job.phase = phase;
+        for (const [z, x, y] of items) {
+          if (job.cancel) return;
+          const f = tileFile(layer, z, x, y), had = fs.existsSync(f);
+          try { await ensure(f, tileUrl(layer, z, x, y)); } catch (e) { job.failed++; }
+          job.done++;
+          if (!had) await sleep(layer === 'terrain' ? 30 : 120);   // be polite to the tile server
+        }
+      };
+      try {
+        await run(p.l, list, p.l === 'terrain' ? 'Terrain' : 'Map tiles');
+        if (tlist.length) await run('terrain', tlist, 'Terrain');
+        if (apl && !job.cancel) {
+          job.phase = 'Airspace';
+          const r = await airspace.prefetch(p.b, { step: (ok) => { job.done++; if (!ok) job.failed++; }, cancelled: () => job.cancel });
+          if (r.skipped) job.total = Math.max(job.done, job.total - apl.missing);
+        }
+      } catch (e) { console.error('Download failed:', e.message); }
       job.running = false;
     })();
-    json(res, { total: list.length });
+    json(res, { total: job.total });
   } else if (url === '/precache/cancel') {
     job.cancel = true; json(res, { ok: true });
   } else if (url === '/precache/status') {
@@ -325,7 +377,7 @@ function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migra
   return new Promise((resolve, reject) => {
     const udp = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     const web = http.createServer(handle);
-    udp.on('message', (msg) => { stats.packets++; stats.bytes += msg.length; stats.last = Date.now(); broadcast(`data: ${msg.toString('base64')}\n\n`); });
+    udp.on('message', (msg) => { realLast = Date.now(); if (demo) stopDemo(); stats.packets++; stats.bytes += msg.length; stats.last = Date.now(); broadcast(`data: ${msg.toString('base64')}\n\n`); });
     udp.once('error', reject);
     web.once('error', reject);
     udp.bind(udpPort, () => web.listen(webPort, host, () => {

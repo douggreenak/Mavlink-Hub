@@ -90,15 +90,41 @@ async function downloadTo(url, file, { onProgress, ...o } = {}) {
 const WINDOWS_HELPER = `# Applies a MAVLink Hub update. Started (hidden) by the hub itself; it waits for the hub and its window to close first,
 # then runs the same installer people install from, silently, over this copy.
 param([string]$Setup, [string]$Dest, [int]$HubPid, [int]$OwnerPid)
-Add-Type -AssemblyName System.Windows.Forms
-function Fail([string]$m) { [System.Windows.Forms.MessageBox]::Show($m, 'MAVLink Hub update', 'OK', 'Warning') | Out-Null; exit 1 }
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+$script:step = 0; $script:msg = 'Installing the update...'; $script:form = $null
+# The same turning ring of dots as the app's start-up screen, so there is something to look at while the installer runs.
+function Show-Spinner {
+  $f = New-Object System.Windows.Forms.Form
+  $f.Text = 'MAVLink Hub'; $f.ClientSize = New-Object System.Drawing.Size(520, 840); $f.StartPosition = 'CenterScreen'
+  $f.BackColor = [System.Drawing.Color]::FromArgb(242, 244, 248); $f.ControlBox = $false
+  $ico = Join-Path $Dest 'assets\\hub.ico'; if (Test-Path $ico) { $f.Icon = New-Object System.Drawing.Icon($ico) }
+  $f.GetType().GetProperty('DoubleBuffered', [Reflection.BindingFlags]'NonPublic,Instance').SetValue($f, $true, $null)
+  $f.Add_Paint({
+    param($s, $e)
+    $g = $e.Graphics; $g.SmoothingMode = 'AntiAlias'; $cx = $s.ClientSize.Width / 2; $cy = $s.ClientSize.Height / 2 - 24
+    for ($i = 0; $i -lt 12; $i++) {
+      $a = [Math]::Max(30, 255 - (($script:step - $i + 12) % 12) * 20); $r = $i * [Math]::PI / 6
+      $b = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($a, 47, 128, 237))
+      $g.FillEllipse($b, $cx + [Math]::Sin($r) * 29 - 5, $cy - [Math]::Cos($r) * 29 - 5, 10, 10); $b.Dispose()
+    }
+    $font = New-Object System.Drawing.Font('Segoe UI', 11); $br = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(85, 96, 112))
+    $w = $g.MeasureString($script:msg, $font).Width; $g.DrawString($script:msg, $font, $br, $cx - $w / 2, $cy + 52); $font.Dispose(); $br.Dispose()
+  })
+  $script:form = $f; $f.Show(); $f.Refresh()
+}
+function Tick { $script:step = ($script:step + 1) % 12; if ($script:form) { $script:form.Invalidate(); [System.Windows.Forms.Application]::DoEvents() } }
+function Fail([string]$m) { if ($script:form) { $script:form.Close() }; [System.Windows.Forms.MessageBox]::Show($m, 'MAVLink Hub update', 'OK', 'Warning') | Out-Null; exit 1 }
 function Wait-Gone([int]$p, [int]$sec) { if ($p -le 0) { return }; try { Wait-Process -Id $p -Timeout $sec -ErrorAction Stop } catch { } }
 Wait-Gone $HubPid 30
 if ($OwnerPid -gt 0) { Start-Sleep -Milliseconds 800; Stop-Process -Id $OwnerPid -Force -ErrorAction SilentlyContinue; Wait-Gone $OwnerPid 15 }
 # /S = silent, /D= = install into this very folder (it must be the last argument and is not quoted)
-$p = Start-Process -FilePath $Setup -ArgumentList "/S /D=$Dest" -Wait -PassThru
+Show-Spinner
+$p = Start-Process -FilePath $Setup -ArgumentList "/S /D=$Dest" -PassThru
+$null = $p.Handle     # so the exit code is filled in
+while (-not $p.HasExited) { Tick; Start-Sleep -Milliseconds 70 }
 if ($null -ne $p.ExitCode -and $p.ExitCode -ne 0) { Fail 'The update could not be installed (is another program using the MAVLink Hub folder?). Close it and try again from the MAVLink Hub window.' }
 Remove-Item -Force $Setup -ErrorAction SilentlyContinue
+$script:msg = 'Starting MAVLink Hub...'; Tick
 $app = Join-Path $Dest 'MAVLink Hub.exe'
 if (Test-Path $app) { Start-Process -FilePath $app -WorkingDirectory $Dest }
 else { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -WorkingDirectory $Dest -WindowStyle Hidden -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $Dest 'launcher.ps1') + '"') }
