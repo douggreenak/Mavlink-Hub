@@ -280,7 +280,9 @@ test('loading spinner: only appears if loading lasts, stays while anything is lo
   D.busy(1); assert.equal(e.style.display, 'none', 'not at once'); await sleep(380); assert.equal(e.style.display, 'block', 'shown after a moment');
   assert.equal(el('asb').classList.contains('loading'), true, 'and as a ring inside the Airspace button, which is always in view');
   D.busy(1); D.busy(-1); assert.equal(e.style.display, 'block', 'still one thing loading');
-  D.busy(-1); assert.equal(e.style.display, 'none'); assert.equal(D.busyCount(), 0); assert.equal(el('asb').classList.contains('loading'), false);
+  D.busy(-1); assert.equal(D.busyCount(), 0); assert.equal(e.style.display, 'block', 'it does not vanish the instant loading stops (tiles arrive in bursts: that made it flicker)');
+  D.busy(1); await sleep(800); assert.equal(e.style.display, 'block', 'more loading soon after: it never went off');
+  D.busy(-1); await sleep(800); assert.equal(e.style.display, 'none', 'hidden once nothing has loaded for a moment'); assert.equal(el('asb').classList.contains('loading'), false);
   D.busy(-1); assert.equal(D.busyCount(), 0, 'never goes negative');
 });
 
@@ -297,7 +299,7 @@ test('loading spinner follows a tile layer, and a layer removed mid-load does no
 test('the spinner works even before the map exists (the button ring shows, nothing breaks)', async () => {
   const { D, el } = loadDashboard();
   D.busy(1); await sleep(380); assert.equal(el('asb').classList.contains('loading'), true);
-  const e = { style: { display: 'none' } }; D.setBusyEl(e); D.busy(0); D.busy(-1); assert.equal(el('asb').classList.contains('loading'), false);
+  const e = { style: { display: 'none' } }; D.setBusyEl(e); D.busy(0); D.busy(-1); await sleep(800); assert.equal(el('asb').classList.contains('loading'), false);
 });
 
 test('saving an area ahead of time: plan counts what is missing, prefetch fetches and saves it, and it then works with the FAA unreachable', async () => {

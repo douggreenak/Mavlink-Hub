@@ -303,9 +303,10 @@ bulk-download from (your own, or a paid provider) and then lift the limit.
   display (attitude, speed, altitude, vertical speed, heading and a terrain alert) with chase, cockpit and orbit cameras. The
   terrain is real elevation data from the free [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (USGS 3DEP,
   about 10 m, in the US including Alaska; SRTM and other public data elsewhere), and *Terrain* switches the ground between
-  **Synthetic** (natural colours), **Satellite** and **Map** (the hub's own cached satellite and street tiles draped over it, with
+  **Satellite** (the default), **Map** and **Synthetic** (natural colours) (the hub's own cached satellite and street tiles draped over it, with
   a sharper close-up layer that follows the aircraft so buildings and roads stay crisp, as in Google Earth).
-  The hub downloads each tile once and keeps it, so it keeps working offline. A spinner shows while the terrain loads.
+  The hub downloads each tile once and keeps it, so it keeps working offline, and what you look at on the map is kept automatically. The view reaches about
+  15 km, with sharper imagery near the aircraft. A spinner shows while the terrain loads.
 - **Offline**: frame an area on the map, pick Overview, Standard or Detailed (each shows its size before you commit), and
   download it. The download also saves the **terrain** (for the 3D view) and the **airspace** for the same area, so all
   three work with no internet; untick the box under the options to skip them. Saved areas show in green. To free space,
