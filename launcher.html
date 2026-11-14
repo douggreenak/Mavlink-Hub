@@ -89,11 +89,6 @@ pre{margin:10px 0 0;max-height:190px;overflow:auto;background:var(--sh);border-r
    <button id="showlog">Show log</button>
   </div>
   <pre id="log" style="display:none"></pre>
-  <div class="row" style="margin-top:6px">
-   <select id="profile" class="grow" aria-label="Test flight"></select>
-   <button id="flight">Start test flight</button>
-  </div>
-  <div class="meta" id="flightnote" style="margin-top:6px">A test flight sends a simulated INAV flight to this hub.</div>
  </section>
 
  <section class="card" id="upcard" style="display:none">
@@ -112,6 +107,8 @@ pre{margin:10px 0 0;max-height:190px;overflow:auto;background:var(--sh);border-r
 
  <section class="card">
   <h2>This hub</h2>
+  <div class="row" style="margin-bottom:10px"><label class="grow" for="units">Default units</label><select id="units"><option value="metric">Metric (km/h, m)</option><option value="imperial">Imperial (mph, ft)</option></select></div>
+  <div class="meta" style="margin:-4px 0 12px">Every screen connected to this hub uses these.</div>
   <div class="row"><div class="grow">Closing this window stops the hub.</div><button class="danger" id="stop">Stop the hub</button></div>
   <div class="foot" id="dir"></div>
  </section>
@@ -125,7 +122,7 @@ pre{margin:10px 0 0;max-height:190px;overflow:auto;background:var(--sh);border-r
 <script>
 const $=id=>document.getElementById(id);
 const api=(path,body)=>fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Launcher':'1'},body:JSON.stringify(body||{})}).then(r=>r.json());
-let cur=null,sel=null,qrFor=null,stopping=false,profilesFilled=false;
+let cur=null,sel=null,qrFor=null,stopping=false;
 const fmtUp=s=>s<90?s+' s':s<5400?Math.round(s/60)+' min':Math.floor(s/3600)+' h '+Math.round((s%3600)/60)+' min';
 function drawQR(url){
  if(qrFor===url)return;qrFor=url;
@@ -149,7 +146,7 @@ function render(s){
   :t.packets?`Last packet ${Math.round(t.lastAgoMs/1000)} s ago. Listening on UDP port ${s.udpPort}.`:`Listening on UDP port ${s.udpPort}.`;
  const h=$('lhint');
  if(live)h.style.display='none';
- else{h.style.display='block';h.textContent=t.packets?'The link dropped. Check the aircraft and radio are on, and this computer is still on the same Wi-Fi.':'Power up the aircraft and radio, with this computer on the same Wi-Fi as the ELRS backpack. Or start a test flight below.'}
+ else{h.style.display='block';h.textContent=t.packets?'The link dropped. Check the aircraft and radio are on, and this computer is still on the same Wi-Fi.':'Power up the aircraft and radio, with this computer on the same Wi-Fi as the ELRS backpack. Or try Demo mode on the dashboard.'}
  $('viewers').textContent=s.viewers?`${s.viewers} screen${s.viewers>1?'s':''} watching`:'No screens watching yet';
  // addresses
  const urls=s.urls.length?s.urls:[];
@@ -162,9 +159,7 @@ function render(s){
  }
  drawQR(sel);
  // tools
- if(!profilesFilled){profilesFilled=true;$('profile').innerHTML=s.profiles.map(p=>`<option value="${p.name}">${p.name==='full'?'Plane with every sensor':p.description?p.name+' · '+p.description:p.name}</option>`).join('')}
- const f=s.testFlight.running;$('flight').textContent=f?'Stop test flight':'Start test flight';$('profile').disabled=f;
- $('flightnote').textContent=f?`Test flight running (${s.testFlight.profile}). Open the dashboard to watch it.`:'A test flight sends a simulated INAV flight to this hub.';
+ if(document.activeElement!==$('units'))$('units').value=s.units||'metric';
  $('showlog').style.display=s.hasLog?'':'none';
  $('dir').textContent='Saved maps and settings: '+s.dataDir;
  renderUpdate(s);
@@ -210,7 +205,7 @@ $('openmaps').onclick=()=>api('/launcher/open',{target:'maps'});
 $('openair').onclick=()=>api('/launcher/open',{target:'airspace'});
 $('showlog').onclick=async()=>{const p=$('log');if(p.style.display==='block'){p.style.display='none';$('showlog').textContent='Show log';return}
  p.textContent=await fetch('/launcher/log').then(r=>r.text());p.style.display='block';p.scrollTop=p.scrollHeight;$('showlog').textContent='Hide log'};
-$('flight').onclick=()=>api('/launcher/testflight',cur&&cur.testFlight.running?{action:'stop'}:{action:'start',profile:$('profile').value});
+$('units').onchange=e=>api('/launcher/units',{units:e.target.value});
 $('stop').onclick=()=>{if(!confirm('Stop the hub? Anyone watching the dashboard will lose the live data.'))return;stopping=true;api('/launcher/stop')};
 </script>
 </body></html>

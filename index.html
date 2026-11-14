@@ -644,6 +644,7 @@ function demStatus(){
  if(DEM.busy||!DEM.orgKey)return 'loading terrain data…';
  return DEM.fail?'no terrain data (the hub needs internet once, or save the area in Offline > Terrain)':'';
 }
+let v3dWorld=false; // true once the terrain has appeared: from then on new terrain streams in quietly instead of covering the view
 let v3dOrg=null; // home (or the first fix), the origin of the 3D world
 // Ground height in metres relative to home.
 function v3dElev(x, z) {
@@ -878,7 +879,8 @@ function v3dFrame(dt){
  const org=Home||(P.length?{lat:P[0][0],lon:P[0][1]}:null),lat=Z.lat??org?.lat,lon=Z.lon??org?.lon;
  let px=0,pz=0;if(org&&Z.lat!=null){px=(Z.lon-org.lon)*111320*Math.cos(org.lat*D2R);pz=(Z.lat-org.lat)*111320}
  v3dOrg=org;if(org)demUpdate(org,lat,lon);
- const ready=!!org&&demReady();
+ if(org&&demReady())v3dWorld=true;
+ const ready=!!org&&(demReady()||(v3dWorld&&DEM.ref!=null)); // after the first start, keep drawing what there is while more loads
  const py=Z.alt||0,roll=Z.roll||0,pitch=Z.pitch||0,hdgDeg=Z.hdg??Z.crs??0,hdg=hdgDeg*D2R;
  const vn=Z.vn||0,ve=Z.ve||0,spd=Z.gs??Math.hypot(vn,ve),armed=!!((V.HEARTBEAT?.f.base_mode||0)&128);
  // terrain warning: look ahead 12 s along the ground track

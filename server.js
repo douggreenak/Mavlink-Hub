@@ -103,6 +103,14 @@ function startDemo(placeId) {
 }
 function stopDemo() { if (!demo) return; clearInterval(demo.timer); demo = null; broadcast(demoEvent()); }
 process.on('exit', () => { if (demo) clearInterval(demo.timer); });
+// The units every screen on this hub shows. Set from the launcher window (or by any screen's Units button); saved and sent to all screens.
+function setUnits(u) {
+  if (!['metric', 'imperial'].includes(u)) return false;
+  settings.units = u;
+  try { fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2)); } catch (e) { /* kept for this session */ }
+  broadcast(settingsEvent());
+  return true;
+}
 const settingsEvent = () => `event: settings\ndata: ${JSON.stringify(settings)}\n\n`;
 
 // Send one SSE chunk to every dashboard. A viewer that has stopped reading (sleeping laptop,
@@ -406,7 +414,8 @@ function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migra
         profiles: Object.keys(PROFILES).map((name) => ({ name, description: DESCRIBE[name] || '' })),
         updater: (h) => createUpdater({ ...h, version: VERSION, dataDir: DATA_DIR, serverDir: __dirname, ...(process.env.UPDATE_API ? { apiUrl: process.env.UPDATE_API, allowHttp: true } : {}), ...(launcherDeps.updater || {}) }),
         info: (port) => ({ version: VERSION, startedAt, webPort: port, udpPort: udp.address().port, urls: addresses(port), viewers: viewers.size, stats,
-          dataDir: DATA_DIR, airspaceDir: AIRSPACE_DIR, logFile: process.env.HUB_LOG || null }),
+          dataDir: DATA_DIR, airspaceDir: AIRSPACE_DIR, logFile: process.env.HUB_LOG || null, units: settings.units }),
+        setUnits,
         quit: () => { if (launcherDeps.onQuit) launcherDeps.onQuit(); else { launcher.shutdown(); process.exit(0); } },
         ...(launcherDeps.open ? { open: launcherDeps.open } : {}), ...(launcherDeps.spawnSim ? { spawnSim: launcherDeps.spawnSim } : {}),
         ...(launcherDeps.graceMs != null ? { graceMs: launcherDeps.graceMs } : {}),

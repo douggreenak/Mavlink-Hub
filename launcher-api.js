@@ -49,7 +49,7 @@ function createLauncherApi(o) {
     return {
       version: i.version, uptimeS: Math.round((t - i.startedAt) / 1000), webPort: i.webPort, udpPort: i.udpPort, urls: i.urls,
       telemetry: { packets: s.packets, bytes: s.bytes, pps: +rate.pps.toFixed(1), bps: Math.round(rate.bps), lastAgoMs: s.last ? t - s.last : null },
-      viewers: i.viewers, dataDir: i.dataDir, airspaceDir: i.airspaceDir, hasLog: !!i.logFile,
+      units: i.units, viewers: i.viewers, dataDir: i.dataDir, airspaceDir: i.airspaceDir, hasLog: !!i.logFile,
       testFlight: { running: !!flight, profile: flight ? flight.profile : null }, profiles, update: updater ? updater.state() : null,
     };
   }
@@ -116,6 +116,10 @@ function createLauncherApi(o) {
         return json(res, 200, { ok: true });
       }
       if (url === '/launcher/update/open' && updater) { open('release', updater.state().url); return json(res, 200, { ok: true }); }
+      if (url === '/launcher/units') {
+        if (!o.setUnits || !o.setUnits(body.units)) return json(res, 400, { error: 'Unknown units' });
+        push(); return json(res, 200, { ok: true, units: body.units });
+      }
       if (url === '/launcher/stop') { json(res, 200, { ok: true }); setTimeout(quit, 150); return; }
       json(res, 404, { error: 'Not found' });
     });

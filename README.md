@@ -191,10 +191,9 @@ window. Open it again at any time: it finds the running hub and just shows the w
 - **Open the dashboard** opens it in your normal browser, and shows how many screens are watching.
 - **Phones and other laptops.** A QR code and the addresses to type, each with a Copy button. Click an address to
   make the QR code point at it (useful when the laptop has both Wi-Fi and Ethernet).
-- **Tools.** Open the saved-maps folder or the folder for your own airspace files, show the hub's log, and start a
-  **test flight**: a simulated INAV flight (with or without GPS, airspeed or battery sensing, and so on) sent to
-  this hub, so you can try everything with no aircraft.
-- **This hub.** **Stop the hub** quits it. Closing the window (or quitting the app) also stops the hub, so nothing is
+- **Tools.** Open the saved-maps folder or the folder for your own airspace files, and show the hub's log. (To try things
+  with no aircraft, use *Demo mode* on the dashboard, or run the test-flight simulator described below.)
+- **This hub.** **Default units** (metric or imperial) is what every screen connected to this hub shows. **Stop the hub** quits it. Closing the window (or quitting the app) also stops the hub, so nothing is
   left running in the background; open MAVLink Hub again to start it. Take care not to close it during a flight.
 
 <img src="docs/screenshots/launcher-stopped.jpg" alt="The window after the hub has been stopped">

@@ -211,3 +211,19 @@ test('launcher.js: when something else already holds the port it says so and exi
     assert.equal(await L.hubRunning(p, 300), false, 'and a plain web server is not mistaken for a hub');
   } finally { blocker.close(); }
 });
+
+test('default units are set from the launcher window, saved on the hub, and every screen follows', async () => {
+  const s = stream(); await until(() => s.events.length);
+  assert.equal(s.last().units, 'metric', 'metric until someone chooses');
+  const dash = http.get(base + '/stream', { agent: false }); let seen = ''; dash.on('response', (r) => { r.setEncoding('utf8'); r.on('data', (c) => { seen += c; }); });
+  assert.equal((await post('/launcher/units', { units: 'furlongs' })).status, 400, 'only metric or imperial');
+  assert.equal((await post('/launcher/units', {})).status, 400);
+  assert.equal((await post('/launcher/units', { units: 'imperial' })).ok, true);
+  await until(() => s.last().units === 'imperial');
+  await until(() => seen.includes('"units":"imperial"'), 3000);                                   // a dashboard is told at once
+  assert.equal(JSON.parse((await call('GET', '/settings')).text).units, 'imperial');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(DIR, 'settings.json'), 'utf8')).units, 'imperial', 'remembered across restarts');
+  assert.equal((await call('POST', '/launcher/units', { headers: { 'X-Launcher': '' }, body: { units: 'metric' } })).status, 403, 'only from the launcher window');
+  await post('/launcher/units', { units: 'metric' }); await until(() => s.last().units === 'metric');
+  dash.destroy(); s.close();
+});
