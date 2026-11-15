@@ -2,56 +2,55 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Flight telemetry</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Flex:wght@400;600;800&display=swap">
 <link rel="stylesheet" href="/vendor/leaflet.css">
 <script async src="/vendor/leaflet.js"></script>
 <script async src="/vendor/qrcode.js"></script>
 <style>
 /* Tokens. Names are shared with the script (--p, --op, --tc, --otc, --warn, --owarn, --sh, --sky, --gnd, --mute). */
-:root{--s:#F2F4F7;--sl:#FFFFFF;--sh:#E9EDF2;--ink:#161C25;--mute:#5F6B7A;--out:#D8DEE6;--p:#1C6FD1;--op:#FFFFFF;--pc:#DCEBFB;--opc:#0F3E78;--sc:#E3F2FD;--osc:#0F3E78;
- --tc:#D7F2E3;--otc:#0E5A36;--warn:#FCEFC4;--owarn:#6A4A00;--bad:#D93025;--ok:#2DA86B;--amber:#E0A526;--gold:#F6C343;--sky:#4A9BE8;--gnd:#8A5A2B;--shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08)}
-:root[data-mode=dark]{color-scheme:dark;--s:#0E131B;--sl:#171E29;--sh:#232C39;--ink:#E7ECF3;--mute:#95A1B3;--out:#2C3644;--p:#5AA7F5;--op:#0B1220;--pc:#1B3454;--opc:#D2E5FA;--sc:#1B3454;--osc:#D2E5FA;
- --tc:#15382A;--otc:#8EE0B7;--warn:#4A3708;--owarn:#F5D47C;--bad:#F0545A;--ok:#3FC484;--amber:#F2B84B;--gold:#F6C343;--sky:#2A6FB5;--gnd:#4E3218;--shadow:none}
+:root{--s:#F8F9FA;--sl:#FFFFFF;--sh:#F1F3F4;--ink:#202124;--mute:#5F6368;--out:#DADCE0;--p:#1A73E8;--op:#FFFFFF;--pc:#E8F0FE;--opc:#174EA6;--sc:#E8F0FE;--osc:#174EA6;
+ --tc:#E6F4EA;--otc:#137333;--warn:#FEF7E0;--owarn:#B06000;--bad:#D93025;--ok:#1E8E3E;--amber:#F9AB00;--gold:#F6C343;--sky:#4A9BE8;--gnd:#8A5A2B;--shadow:0 1px 2px rgba(60,64,67,.10),0 1px 3px 1px rgba(60,64,67,.06)}
+:root[data-mode=dark]{color-scheme:dark;--s:#202124;--sl:#292A2D;--sh:#35363A;--ink:#E8EAED;--mute:#9AA0A6;--out:#3C4043;--p:#8AB4F8;--op:#202124;--pc:#2D4166;--opc:#D2E3FC;--sc:#2D4166;--osc:#D2E3FC;
+ --tc:#1E3A2B;--otc:#81C995;--warn:#44371A;--owarn:#FDD663;--bad:#F28B82;--ok:#81C995;--amber:#FDD663;--gold:#F6C343;--sky:#2A6FB5;--gnd:#4E3218;--shadow:none}
 .leaflet-container{background:var(--sh);font-family:inherit}
 [data-mode=dark] #lf.street .leaflet-tile-pane,[data-mode=dark] #om.street .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9)}
 .leaflet-control-attribution{background:var(--sl)!important;color:var(--mute)!important}
 .leaflet-control-attribution a{color:var(--p)!important}
 .leaflet-bar a{background:var(--sl);color:var(--ink);border-color:var(--out)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--s);color:var(--ink);font:400 15px/1.45 "Roboto Flex",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--s);color:var(--ink);font:400 14px/1.5 "Google Sans Text","Google Sans",Roboto,"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 button{font-family:inherit}
 :focus-visible{outline:2px solid var(--p);outline-offset:2px}
-header{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center;padding:18px 24px 6px}
-h1{color:var(--ink);font-size:22px;font-weight:700;letter-spacing:-.3px;margin:0 auto 0 0}
-.chip{padding:6px 14px;border-radius:999px;background:var(--sh);font-weight:600;font-size:13px;border:1px solid transparent;color:var(--ink);line-height:1.4;transition:background .15s,border-color .15s}
-button.chip{cursor:pointer}button.chip:hover{border-color:var(--out)}
-.chip.on{background:var(--p);color:var(--op)}.chip:disabled{opacity:.45;cursor:default}
-nav{display:flex;gap:4px;padding:8px 24px;margin:0 auto;max-width:max-content}
-nav button{font-weight:600;font-size:14px;border:0;padding:9px 18px;border-radius:10px;background:transparent;color:var(--mute);cursor:pointer;transition:background .15s,color .15s}
+header{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center;padding:10px 24px;background:var(--sl)}
+h1{color:var(--ink);font-size:20px;font-weight:500;letter-spacing:0;margin:0 auto 0 0;display:flex;align-items:center;gap:10px}
+h1 img{width:28px;height:28px;border-radius:7px}
+.chip{padding:5px 12px;border-radius:8px;background:transparent;font-weight:500;font-size:13px;border:1px solid var(--out);color:var(--ink);line-height:1.5;transition:background .15s,border-color .15s}
+button.chip{cursor:pointer}button.chip:hover{background:var(--sh)}
+.chip.on{background:var(--pc);color:var(--opc);border-color:transparent}button.chip.on:hover{background:var(--pc);filter:brightness(.97)}.chip:disabled{opacity:.45;cursor:default}
+nav{display:flex;justify-content:center;gap:0;padding:0 24px;margin:0 0 16px;background:var(--sl);border-bottom:1px solid var(--out)}
+nav button{font-weight:500;font-size:14px;border:0;border-bottom:3px solid transparent;padding:13px 22px 10px;border-radius:0;background:transparent;color:var(--mute);cursor:pointer;transition:background .15s,color .15s}
 nav button:hover{color:var(--ink);background:var(--sh)}
-nav button.on{background:var(--sl);color:var(--p);box-shadow:var(--shadow)}
-:root[data-mode=dark] nav button.on{background:var(--sh);color:var(--ink)}
-main{padding:8px 24px 24px;max-width:1500px;margin:0 auto}
+nav button.on{color:var(--p);border-bottom-color:var(--p)}
+main{padding:0 24px 24px;max-width:1500px;margin:0 auto}
 .view{display:none}.view.on{display:block}
-.card{background:var(--sl);border:1px solid var(--out);border-radius:16px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card{background:var(--sl);border:1px solid var(--out);border-radius:12px;padding:16px 20px;margin-bottom:16px}
 /* The attitude indicator is a 2x2 block inside the same grid as the value tiles, so tiles flow around and below it. */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:12px}
 #tiles{display:contents}
 .hor{padding:0;overflow:hidden;background:var(--sh);margin:0;grid-column:span 2;grid-row:span 2;position:relative;min-height:200px}
 #hor{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;align-content:start}
-.tile{border-radius:14px;padding:14px 16px;background:var(--sl);border:1px solid var(--out);box-shadow:var(--shadow);min-width:0}
+.tile{border-radius:12px;padding:14px 16px;background:var(--sl);border:1px solid var(--out);min-width:0}
 .tile.over{background:#fbe4e2;border-color:#e5aaa5}.tile.over b{color:#8f221a}.tile.over .lab,.tile.over span{color:#a2453d}
 [data-mode=dark] .tile.over{background:#472629;border-color:#7a3d41}[data-mode=dark] .tile.over b{color:#ffd3cf}[data-mode=dark] .tile.over .lab,[data-mode=dark] .tile.over span{color:#e6aaa6}
-.tile .lab{color:var(--mute);font-size:12.5px;font-weight:600;letter-spacing:.01em;line-height:1.25;min-height:2.5em;align-items:flex-start}
+.tile .lab{color:var(--mute);font-size:12.5px;font-weight:500;letter-spacing:.01em;line-height:1.25;min-height:2.5em;align-items:flex-start}
 .tile .lab svg{margin-top:1px}
 .tile .lab svg{color:var(--p)}
-.tile b{display:block;font-size:30px;font-weight:700;line-height:1.15;margin:6px 0 2px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tile b{display:block;font-size:30px;font-weight:500;line-height:1.15;margin:6px 0 2px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .tile span{font-size:12px;color:var(--mute)}
 .rc{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px 16px;font-size:13px;color:var(--mute)}
 .bar{height:8px;border-radius:4px;background:var(--sh);overflow:hidden;margin-top:4px}
 .bar i{display:block;height:100%;background:var(--p);border-radius:4px}
-#lf,#cv,#v3dWrap{height:calc(100vh - 200px);min-height:360px;width:100%;border-radius:16px;display:none;overflow:hidden;border:1px solid var(--out)}
+#lf,#cv,#v3dWrap{height:calc(100vh - 200px);min-height:360px;width:100%;border-radius:12px;display:none;overflow:hidden;border:1px solid var(--out)}
 #synth3d.on #v3dWrap{display:block;position:relative;background:#090d14;box-shadow:var(--shadow);touch-action:none;user-select:none}
 #gl3d,#hud3d{position:absolute;inset:0;width:100%;height:100%;display:block}
 #hud3d{pointer-events:none}
@@ -64,7 +63,7 @@ main{padding:8px 24px 24px;max-width:1500px;margin:0 auto}
 #cv{background:var(--sh)}
 .all{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .all .card{margin:0}
-h2,h3{margin:0 0 8px;font-size:16px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px}
+h2,h3{margin:0 0 8px;font-size:16px;font-weight:500;display:flex;justify-content:space-between;align-items:center;gap:8px}
 h3{font-size:14px}h3 span{font-weight:500;color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums}
 dl{display:grid;grid-template-columns:auto 1fr;gap:3px 16px;margin:8px 0 0;font-size:13px}
 dt{color:var(--mute)}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;word-break:break-all}
@@ -85,21 +84,21 @@ body.editing .hideable.off::after{content:'+'}
 #asp.folded h2{margin-bottom:0}
 #chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .chip:empty{display:none}
-#link,#arm{font-weight:600}
-.bars{display:flex;align-items:center;gap:8px;border:1px solid var(--out);border-radius:999px;background:var(--sl);color:var(--ink);padding:5px 12px 5px 10px;font:600 13px "Roboto Flex",system-ui,sans-serif;cursor:pointer;font-variant-numeric:tabular-nums}
+#link,#arm{font-weight:500;border-color:transparent}
+.bars{display:flex;align-items:center;gap:8px;border:1px solid var(--out);border-radius:999px;background:var(--sl);color:var(--ink);padding:5px 12px 5px 10px;font:600 13px Roboto,"Segoe UI",system-ui,sans-serif;cursor:pointer;font-variant-numeric:tabular-nums}
 .bars rect{fill:var(--out)}.bars rect.on{fill:var(--ok)}.bars.mid rect.on{fill:var(--amber)}.bars.low rect.on{fill:var(--bad)}
 #conn{position:fixed;top:64px;right:24px;width:min(360px,calc(100vw - 24px));z-index:1300;display:none;box-shadow:0 12px 32px rgba(0,0,0,.22);margin:0}
 #conn.show{display:block}
 .crow{display:grid;grid-template-columns:1fr auto;gap:2px 12px;margin:10px 0;font-size:13px}.crow span{color:var(--mute)}.crow b{font-variant-numeric:tabular-nums;font-weight:600}.crow .bar{grid-column:1/-1;margin:0}
 @media(max-width:800px){
- header{padding:12px 14px 4px;gap:8px 10px}h1{font-size:19px}
+ header{padding:10px 14px;gap:8px 10px}h1{font-size:18px}
  #chips{order:3;width:100%;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
  #chips::-webkit-scrollbar{display:none}
  .chip{white-space:nowrap;flex:none;min-height:34px;display:inline-flex;align-items:center}
  .bars{order:2;min-height:36px}
- nav{position:fixed;left:0;right:0;bottom:0;z-index:1200;background:var(--sl);border-top:1px solid var(--out);padding:6px 10px calc(6px + env(safe-area-inset-bottom));gap:4px;max-width:none;margin:0}
- nav button{flex:1;min-height:44px;padding:8px;border-radius:10px}
- nav button.on{box-shadow:none;background:var(--sh)}
+ nav{position:fixed;left:0;right:0;bottom:0;z-index:1200;background:var(--sl);border-top:1px solid var(--out);border-bottom:0;padding:6px 10px calc(6px + env(safe-area-inset-bottom));gap:4px;max-width:none;margin:0}
+ nav button{flex:1;min-height:44px;padding:8px;border-radius:16px;border-bottom:0}
+ nav button.on{background:var(--pc);color:var(--opc)}
  main{padding:6px 12px 100px}
  .grid{grid-template-columns:repeat(2,1fr);gap:10px}
  .tiles{grid-template-columns:repeat(2,1fr);gap:10px}
@@ -142,7 +141,7 @@ details summary{cursor:pointer;color:var(--mute);font-size:13px;user-select:none
 @media(max-width:800px){.opts{grid-template-columns:1fr}}
 #om{height:calc(100vh - 380px);min-height:380px}
 @media(max-width:800px){#om{height:55vh;height:55dvh;min-height:300px}}
-#snack{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:max-content;max-width:min(90vw,calc(100vw - 32px));background:var(--ink);color:var(--s);padding:12px 20px;border-radius:14px;display:none;font-size:14px;font-weight:500;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:1250}
+#snack{position:fixed;left:24px;bottom:24px;width:max-content;max-width:min(90vw,calc(100vw - 32px));background:#323232;color:#F1F3F4;padding:13px 20px;border-radius:6px;display:none;font-size:14px;font-weight:400;box-shadow:0 3px 5px -1px rgba(0,0,0,.2),0 6px 10px rgba(0,0,0,.14);z-index:1250}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 
 .pathsl{display:inline-flex;align-items:center;gap:8px}.pathsl input{width:120px;accent-color:var(--p);cursor:pointer}.pathsl b{min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
@@ -152,21 +151,21 @@ details summary{cursor:pointer;color:var(--mute);font-size:13px;user-select:none
 .sx i{width:9px;height:9px;border-radius:50%;background:var(--out)}.sx.ok i{background:var(--ok)}.sx.warn i{background:var(--amber)}
 .sx small{font-weight:500;color:var(--mute)}.sx.off{font-weight:500;color:var(--mute)}
 .ptick b{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#F6C343;border:1.5px solid #1B2430}
-.ptick span{position:absolute;left:7px;top:-20px;font:600 11px "Roboto Flex",system-ui,sans-serif;color:#1B2430;background:rgba(255,255,255,.88);padding:0 5px;border-radius:5px;white-space:nowrap}
+.ptick span{position:absolute;left:7px;top:-20px;font:600 11px Roboto,"Segoe UI",system-ui,sans-serif;color:#1B2430;background:rgba(255,255,255,.88);padding:0 5px;border-radius:5px;white-space:nowrap}
 .spin{position:absolute;right:12px;top:12px;z-index:1000;width:22px;height:22px;border-radius:50%;box-sizing:border-box;border:3px solid var(--out);border-top-color:var(--p);background:var(--sl);box-shadow:0 2px 8px rgba(0,0,0,.25);animation:spin .8s linear infinite;pointer-events:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 button.chip.loading::after{content:'';display:inline-block;width:11px;height:11px;margin-left:8px;border-radius:50%;box-sizing:border-box;border:2px solid var(--out);border-top-color:var(--p);animation:spin .8s linear infinite;vertical-align:-1px}
 button.chip.on.loading::after{border-color:#ffffff66;border-top-color:var(--op)}
 button.chip.warn{background:var(--warn);color:var(--owarn)}
 @media(prefers-reduced-motion:reduce){.spin,button.chip.loading::after{animation-duration:2.4s}}
-.ashint{position:absolute;left:56px;top:10px;z-index:1000;max-width:calc(100% - 130px);padding:5px 11px;border-radius:10px;background:var(--sl);color:var(--ink);border:1px solid var(--out);font:500 12px "Roboto Flex",system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.25);pointer-events:none}
-.ceil span{position:absolute;transform:translate(-50%,-50%);font:600 10.5px "Roboto Flex",system-ui,sans-serif;color:#0b2a3a;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;pointer-events:none}
+.ashint{position:absolute;left:56px;top:10px;z-index:1000;max-width:calc(100% - 130px);padding:5px 11px;border-radius:10px;background:var(--sl);color:var(--ink);border:1px solid var(--out);font:500 12px Roboto,"Segoe UI",system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.25);pointer-events:none}
+.ceil span{position:absolute;transform:translate(-50%,-50%);font:600 10.5px Roboto,"Segoe UI",system-ui,sans-serif;color:#0b2a3a;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;pointer-events:none}
 [data-mode=dark] .ceil span{color:#d6f1f8;text-shadow:0 0 3px #000,0 0 3px #000}
 .lgd{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--mute);margin-top:4px}
 .lgd span{display:inline-flex;align-items:center;gap:6px}.lgd i{width:14px;height:14px;border-radius:3px;border:2px solid;display:inline-block}
-.leaflet-popup-content{font:400 13px/1.4 "Roboto Flex",system-ui,sans-serif}
+.leaflet-popup-content{font:400 13px/1.4 Roboto,"Segoe UI",system-ui,sans-serif}
 </style></head><body>
-<header><h1>Flight telemetry</h1>
+<header><h1><img src="/assets/icon.png" alt="">Flight telemetry</h1>
 <div id="chips"><span id="link" class="chip">Connecting…</span><span id="arm" class="chip"></span><button id="demo" class="chip" style="cursor:pointer">Demo mode ▾</button><button id="theme" class="chip" style="cursor:pointer">Theme: Auto</button><button id="units" class="chip" style="cursor:pointer">Units: Metric</button><button id="edit" class="chip" style="cursor:pointer">Edit tiles</button><button id="he" class="chip" style="cursor:pointer">Hide empty</button><button id="qrb" class="chip" style="cursor:pointer">Open on phone</button></div>
 <button id="bars" class="bars" aria-label="Connection stats"></button></header>
 <nav id="nav"><button data-v="flight" class="on">Flight</button><button data-v="map">Map</button><button data-v="synth3d">3D Vision</button><button data-v="maps">Offline</button><button data-v="all">All data</button></nav>
@@ -501,12 +500,12 @@ function trackPos(gp,now){
 const sti=(m,b)=>{const iv=V[m]?.iv;return iv?Math.max(b,Math.min(.6,iv/1000*.55)):b};
 function step(dt){
  const at=V.ATTITUDE?.f,gp=V.GLOBAL_POSITION_INT?.f,vh=V.VFR_HUD?.f,ss=V.SYS_STATUS?.f,now=Date.now();
- if(at){const k=sti('ATTITUDE',.15);sm('roll',at.roll,k,dt,6.2832);sm('pitch',at.pitch,k,dt,6.2832)}
+ if(at){const k=sti('ATTITUDE',.06);sm('roll',at.roll,k,dt,6.2832);sm('pitch',at.pitch,k,dt,6.2832)}
  const gpsOk=gpsUsable();
- if(vh){const k=sti('VFR_HUD',.4);
+ if(vh){const k=sti('VFR_HUD',.25);
   if(gpsOk)sm('gs',vh.groundspeed,k,dt);
   if(hasSensor(SENSOR.PITOT)!==false)sm('as',vh.airspeed,k,dt);
-  sm('climb',vh.climb,k,dt);sm('thr',vh.throttle,k,dt);sm('hdg',vh.heading,sti('VFR_HUD',.2),dt,360)}
+  sm('climb',vh.climb,k,dt);sm('thr',vh.throttle,k,dt);sm('hdg',vh.heading,sti('VFR_HUD',.1),dt,360)}
  if(gp&&(gp.lat||gp.lon)&&gpsOk){ // never extrapolate from a zeroed or no-fix position
   const vn=gp.vx/100,ve=gp.vy/100,k=sti('GLOBAL_POSITION_INT',.3);
   sm('alt',gp.relative_alt/1000,k,dt);
@@ -1082,7 +1081,7 @@ let tlast=performance.now(),acc=0;
 function frame(now){
  const dt=Math.min(.1,(now-tlast)/1000);tlast=now;step(dt);
  if(view==='flight')horizon();if(view==='map')mapFrame();if(view==='synth3d')v3dFrame(dt);
- acc+=dt;if(acc>.12){acc=0;upStats();render()}
+ acc+=dt;if(acc>.1){acc=0;upStats();render()}
  requestAnimationFrame(frame);
 }
 let layer='street',tileL;
@@ -1553,11 +1552,20 @@ $('demo').onclick=e=>{e.stopPropagation();if(demo){demoMenu(false);demoCall('/de
 $('demomenu').onclick=e=>{const b=e.target.closest('[data-place]');if(!b)return;demoMenu(false);demoCall('/demo/start?place='+encodeURIComponent(b.dataset.place))};
 document.addEventListener('click',()=>demoMenu(false));
 document.addEventListener('keydown',e=>{if(e.key==='Escape')demoMenu(false)});
-const es=new EventSource('/stream');
-es.onopen=()=>hubUp=true;es.onerror=()=>hubUp=false;
-es.onmessage=e=>feed(Uint8Array.from(atob(e.data),ch=>ch.charCodeAt(0)));
-es.addEventListener('demo',e=>{try{const o=JSON.parse(e.data);setDemo(!!o.running,o.place)}catch(x){}});
-es.addEventListener('settings',e=>{try{const o=JSON.parse(e.data);cfg.units=o.units;cfg.hidden=o.hidden;applyCfg();try{localStorage.setItem('cfg',JSON.stringify(cfg))}catch(x){}}catch(x){}});
+// The live stream. The hub sends a keep-alive every 10 s; if nothing at all has arrived for 25 s (a Wi-Fi hiccup can leave a connection open but
+// dead, which the browser never notices) the dashboard drops it and connects again, rather than showing stale numbers.
+let es=null,hubSeen=Date.now();
+function connectStream(){
+ if(es&&es.close)es.close();
+ es=new EventSource('/stream');hubSeen=Date.now();
+ es.onopen=()=>{hubUp=true;hubSeen=Date.now()};es.onerror=()=>hubUp=false;
+ es.onmessage=e=>{hubSeen=Date.now();feed(Uint8Array.from(atob(e.data),ch=>ch.charCodeAt(0)))};
+ es.addEventListener('ping',()=>{hubSeen=Date.now()});
+ es.addEventListener('demo',e=>{try{const o=JSON.parse(e.data);setDemo(!!o.running,o.place)}catch(x){}});
+ es.addEventListener('settings',e=>{try{const o=JSON.parse(e.data);cfg.units=o.units;cfg.hidden=o.hidden;applyCfg();try{localStorage.setItem('cfg',JSON.stringify(cfg))}catch(x){}}catch(x){}});
+}
+connectStream();
+setInterval(()=>{if(Date.now()-hubSeen>25000){hubUp=false;connectStream()}},5000);
 if(location.protocol==='file:')$('fileWarn').style.display='block';
 applyTheme();applyCfg();requestAnimationFrame(frame);render();
 </script></body></html>

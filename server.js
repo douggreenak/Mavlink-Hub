@@ -10,7 +10,7 @@
 //   AIRSPACE (on)       - "off" stops the hub fetching airspace data (saved data and your own files still work)
 //   AIRSPACE_MAX_FLOOR_FT (400) - hide airspace whose floor is above this height, to keep the map readable
 const dgram = require('dgram'), http = require('http'), https = require('https'), fs = require('fs');
-const os = require('os'), path = require('path');
+const os = require('os'), path = require('path'), zlib = require('zlib'), crypto = require('crypto');
 
 // KEY=VALUE lines from a settings file; real environment variables win over the file.
 function applyEnvFile(file, env = process.env) {
@@ -95,7 +95,7 @@ function startDemo(placeId) {
   if (realLast && Date.now() - realLast < 5000) return { error: 'An aircraft is sending telemetry right now, so the demo was not started.' };
   const { createSim } = require('./sim/inav-sim.js'), sim = createSim(DEMO_PROFILE, { seed: 1, home: place.home, alt: place.alt, swing: place.swing, routeScale: place.routeScale, airborne: true }), t0 = Date.now();
   const timer = setInterval(() => {
-    for (const d of sim.advance((Date.now() - t0) / 1000)) { stats.packets++; stats.bytes += d.buf.length; stats.last = Date.now(); demo.fed = true; broadcast('data: ' + d.buf.toString('base64') + '\n\n'); }
+    for (const d of sim.advance((Date.now() - t0) / 1000)) { stats.packets++; stats.bytes += d.buf.length; stats.last = Date.now(); demo.fed = true; broadcastData('data: ' + d.buf.toString('base64') + '\n\n'); }
   }, 50);
   demo = { sim, timer, fed: false, place };
   broadcast(demoEvent());
@@ -115,11 +115,37 @@ const settingsEvent = () => `event: settings\ndata: ${JSON.stringify(settings)}\
 
 // Send one SSE chunk to every dashboard. A viewer that has stopped reading (sleeping laptop,
 // dead Wi-Fi) is dropped once a megabyte piles up; its browser reconnects on its own.
+// Settings, demo and keep-alive events: always delivered (a viewer that has fallen a megabyte behind is dropped, and reconnects).
 function broadcast(line) {
   for (const v of viewers) {
     if (v.writableLength > 1e6) { viewers.delete(v); v.destroy(); continue; }
     v.write(line);
   }
+}
+// Telemetry: what matters is the newest reading, so a viewer on a slow link (weak Wi-Fi) that has 64 KB still waiting is skipped for this
+// packet instead of queueing it. Without that its screen falls further and further behind; with it, it just updates less often.
+function broadcastData(line) {
+  for (const v of viewers) {
+    if (v.writableLength > 65536) continue;
+    v.write(line);
+  }
+}
+// Static files: compressed once and kept in memory, with an ETag so a reload costs a 304. (Phones on weak Wi-Fi feel this most.)
+const staticCache = new Map();
+function sendStatic(req, res, file, type, cache) {
+  let st; try { st = fs.statSync(file); } catch (e) { res.writeHead(404).end('Not found'); return; }
+  let e = staticCache.get(file);
+  if (!e || e.mtime !== st.mtimeMs) {
+    const raw = fs.readFileSync(file);
+    e = { mtime: st.mtimeMs, raw, gz: /^text\/|javascript|svg/.test(type) && raw.length > 1024 ? zlib.gzipSync(raw, { level: 9 }) : null, etag: '"' + crypto.createHash('sha1').update(raw).digest('hex').slice(0, 16) + '"' };
+    staticCache.set(file, e);
+  }
+  const h = { 'Content-Type': type, 'Cache-Control': cache, ETag: e.etag, Vary: 'Accept-Encoding' };
+  if (req.headers['if-none-match'] === e.etag) { res.writeHead(304, h).end(); return; }
+  const gz = e.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || ''), body = gz ? e.gz : e.raw;
+  if (gz) h['Content-Encoding'] = 'gzip';
+  h['Content-Length'] = body.length;
+  res.writeHead(200, h); res.end(body);
 }
 
 const fill = (tpl, z, x, y) => tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y);
@@ -272,9 +298,7 @@ function handle(req, res) {
   } else if ((m = url.match(/^\/vendor\/(leaflet\.js|leaflet\.css|qrcode\.js|images\/[\w.-]+)$/))) {
     const f = path.join(__dirname, 'vendor', m[1]);
     const types = { js: 'text/javascript', css: 'text/css', png: 'image/png', svg: 'image/svg+xml' };
-    if (!fs.existsSync(f)) { res.writeHead(404).end(); return; }
-    res.writeHead(200, { 'Content-Type': types[f.split('.').pop()] || 'application/octet-stream' });
-    fs.createReadStream(f).pipe(res);
+    sendStatic(req, res, f, types[f.split('.').pop()] || 'application/octet-stream', 'public, max-age=86400');
   } else if (url === '/demo' || url === '/demo/start' || url === '/demo/stop') {
     // Open to every screen on this hub, but a page on some other website must not be able to start it: a custom header and a
     // same-origin check (a cross-origin page cannot send that header without a pre-flight the hub never approves).
@@ -376,8 +400,7 @@ function handle(req, res) {
       } catch (e) { res.writeHead(400).end('Bad JSON'); }
     });
   } else if (url === '/' || url === '/index.html') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
-    fs.createReadStream(path.join(__dirname, 'index.html')).pipe(res);
+    sendStatic(req, res, path.join(__dirname, 'index.html'), 'text/html; charset=utf-8', 'no-cache');
   } else {
     res.writeHead(404).end('Not found');
   }
@@ -406,7 +429,8 @@ function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migra
   return new Promise((resolve, reject) => {
     const udp = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     const web = http.createServer(handle);
-    udp.on('message', (msg) => { realLast = Date.now(); if (demo) stopDemo(); stats.packets++; stats.bytes += msg.length; stats.last = Date.now(); broadcast(`data: ${msg.toString('base64')}\n\n`); });
+    web.on('connection', (s) => s.setNoDelay(true));   // send each telemetry line at once instead of waiting to batch it (Nagle)
+    udp.on('message', (msg) => { realLast = Date.now(); if (demo) stopDemo(); stats.packets++; stats.bytes += msg.length; stats.last = Date.now(); broadcastData(`data: ${msg.toString('base64')}\n\n`); });
     udp.once('error', reject);
     web.once('error', reject);
     udp.bind(udpPort, () => web.listen(webPort, host, () => {
@@ -435,9 +459,12 @@ function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migra
         }, 2000);
         watch.unref();
       }
+      // A keep-alive every 10 s: connections over Wi-Fi/NAT stay open, and a dashboard that stops hearing it knows to reconnect.
+      const ping = setInterval(() => broadcast('event: ping\ndata: 1\n\n'), +process.env.HUB_PING_MS || 10000); ping.unref();
       resolve({
         udp, web, launcher,
         close: () => new Promise((done) => {
+          clearInterval(ping);
           if (launcher) launcher.shutdown();
           for (const v of viewers) v.destroy();
           viewers.clear();
@@ -450,6 +477,9 @@ function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migra
 
 if (require.main === module) {
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(0));   // lets the exit hook above stop any test flight
+  // A telemetry relay should not die in flight over one unexpected error: log it (to hub.log) and carry on.
+  process.on('uncaughtException', (e) => console.error('Unexpected error (the hub keeps running):', (e && e.stack) || e));
+  process.on('unhandledRejection', (e) => console.error('Unexpected rejection (the hub keeps running):', (e && e.stack) || e));
   start().then(({ udp, web }) => {
     console.log(`Node ${process.version} - listening for MAVLink on UDP ${udp.address().port}`);
     console.log(`Saved maps and settings: ${DATA_DIR}`);
@@ -462,4 +492,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { VIRTUAL_ADAPTER, start, handle, parsePlan, ranges, countOf, listOf, fill, tileUrl, tileFile, download, addresses, applyEnvFile, defaultDataDir, migrateOldData, clearArea, TILES, MAX_TILES, DATA_DIR, CACHE, SETTINGS_FILE, AIRSPACE_DIR, PRECACHE_MAX_ZOOM, TILE_MAX_ZOOM };
+module.exports = { broadcastData, viewers, VIRTUAL_ADAPTER, start, handle, parsePlan, ranges, countOf, listOf, fill, tileUrl, tileFile, download, addresses, applyEnvFile, defaultDataDir, migrateOldData, clearArea, TILES, MAX_TILES, DATA_DIR, CACHE, SETTINGS_FILE, AIRSPACE_DIR, PRECACHE_MAX_ZOOM, TILE_MAX_ZOOM };
