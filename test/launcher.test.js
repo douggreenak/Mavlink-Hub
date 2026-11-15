@@ -37,9 +37,10 @@ test('guard: only this computer, only the hub\'s own host name, and POSTs must c
 
 // ---------- the API against a real hub ----------
 let hub, base, port, quits = 0, opened = [], sims = [];
+let fwAllowed = false, fwAsked = 0; const fakeFw = { status: async () => fwAllowed, allow: () => { fwAsked++; fwAllowed = true; } };
 const fakeSpawn = (profile, udpPort) => { const child = new EventEmitter(); child.kill = () => { child.killed = true; child.emit('exit'); }; sims.push({ profile, udpPort, child }); return child; };
 before(async () => {
-  hub = await S.start({ udpPort: 0, webPort: 0, host: '127.0.0.1', migrate: false, launcherDeps: { open: (k, t) => opened.push([k, t]), spawnSim: fakeSpawn, onQuit: () => { quits++; }, graceMs: 120 } });
+  hub = await S.start({ udpPort: 0, webPort: 0, host: '127.0.0.1', migrate: false, launcherDeps: { firewall: fakeFw, open: (k, t) => opened.push([k, t]), spawnSim: fakeSpawn, onQuit: () => { quits++; }, graceMs: 120 } });
   port = hub.web.address().port; base = `http://127.0.0.1:${port}`;
 });
 after(async () => { await hub.close(); });
@@ -226,4 +227,27 @@ test('default units are set from the launcher window, saved on the hub, and ever
   assert.equal((await call('POST', '/launcher/units', { headers: { 'X-Launcher': '' }, body: { units: 'metric' } })).status, 403, 'only from the launcher window');
   await post('/launcher/units', { units: 'metric' }); await until(() => s.last().units === 'metric');
   dash.destroy(); s.close();
+});
+
+test('Windows Firewall: the window says when other devices are blocked, one button asks Windows to allow it, and it notices the answer', async () => {
+  fwAllowed = false; fwAsked = 0;
+  const s = stream(); await until(() => s.events.length);
+  await until(() => s.last().firewall && s.last().firewall.supported && s.last().firewall.allowed === false);
+  assert.equal(fwAsked, 0, 'looking is not asking');
+  assert.equal((await call('POST', '/launcher/firewall', { headers: { 'X-Launcher': '' }, body: {} })).status, 403, 'only from the launcher window');
+  assert.equal((await post('/launcher/firewall', {})).ok, true); assert.equal(fwAsked, 1);
+  await until(() => s.last().firewall.allowed === true, 6000);
+  s.close();
+});
+test('the firewall rule: named after the bundled node.exe, for every network, added through an elevation prompt, and found by netsh\'s exit code', async () => {
+  const { windowsFirewall, ruleName } = require('../launcher-api.js'), exe = 'C:\\Users\\Me\\AppData\\Local\\Programs\\MAVLink Hub\\runtime\\node.exe';
+  assert.equal(ruleName(exe), 'MAVLink Hub (' + exe + ')');
+  let launched, asked;
+  const fw = windowsFirewall(exe, { launch: (cmd, args) => { launched = [cmd, args]; return { on() {}, unref() {} }; }, run: (cmd, args, o, cb) => { asked = [cmd, args]; cb(asked[1].join(' ').includes('MAVLink Hub (') ? null : new Error('none')); } });
+  assert.equal(await fw.status(), true); assert.deepEqual(asked[1].slice(0, 4), ['advfirewall', 'firewall', 'show', 'rule']);
+  fw.allow(); const cmd = launched[1].join(' ');
+  assert.equal(launched[0], 'powershell.exe'); assert.match(cmd, /-Verb RunAs/); assert.match(cmd, /profile=any/); assert.match(cmd, /dir=in action=allow/);
+  assert.ok(cmd.includes('program="' + exe + '"'), 'allows exactly this node.exe'); assert.ok(cmd.includes('name="' + ruleName(exe) + '"'));
+  const quoted = windowsFirewall("C:\\O'Neil\\node.exe", { launch: (c, a) => { launched = [c, a]; return {}; } }); quoted.allow();
+  assert.ok(launched[1].join(' ').includes("O''Neil"), 'an apostrophe in the path cannot break out of the command');
 });

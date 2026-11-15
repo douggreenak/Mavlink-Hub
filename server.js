@@ -384,12 +384,17 @@ function handle(req, res) {
 }
 
 // Addresses a phone on the same network can use; private ranges first.
+// The addresses other devices can try, best first. A PC often has virtual adapters (Hyper-V, WSL, VirtualBox, Docker, VPNs) whose
+// addresses no phone can reach, so those go last: the first one is what the QR code and "Open on phone" use.
+const VIRTUAL_ADAPTER = /vethernet|wsl|hyper-v|vmware|virtualbox|vbox|docker|veth|^br-|virbr|bridge|tailscale|zerotier|hamachi|bluetooth|teredo|isatap|npcap|loopback|vpn|tap-|tun|utun|awdl|llw/i;
 function addresses(port) {
-  const urls = [];
-  for (const list of Object.values(os.networkInterfaces()))
-    for (const a of list) if (a.family === 'IPv4' && !a.internal) urls.push(`http://${a.address}:${port}`);
-  const priv = (u) => /\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u) ? 0 : 1;
-  return urls.sort((a, b) => priv(a) - priv(b));
+  const found = [];
+  for (const [name, list] of Object.entries(os.networkInterfaces()))
+    for (const a of list || []) if ((a.family === 'IPv4' || a.family === 4) && !a.internal) {
+      const lan = /^(192\.168\.|10\.)/.test(a.address), p172 = /^172\.(1[6-9]|2\d|3[01])\./.test(a.address), linkLocal = /^169\.254\./.test(a.address);
+      found.push({ url: `http://${a.address}:${port}`, score: (linkLocal ? 8 : 0) + (VIRTUAL_ADAPTER.test(name) ? 4 : 0) + (lan || p172 ? 0 : 2) + (p172 ? 1 : 0) });
+    }
+  return found.sort((a, b) => a.score - b.score).map((f) => f.url);   // a stable sort: equals keep the system's order
 }
 
 // Bind the UDP listener and the web server. Resolves with both plus a close() for tests.
@@ -416,6 +421,7 @@ function start({ udpPort = UDP_PORT, webPort = WEB_PORT, host = '0.0.0.0', migra
         info: (port) => ({ version: VERSION, startedAt, webPort: port, udpPort: udp.address().port, urls: addresses(port), viewers: viewers.size, stats,
           dataDir: DATA_DIR, airspaceDir: AIRSPACE_DIR, logFile: process.env.HUB_LOG || null, units: settings.units }),
         setUnits,
+        ...(launcherDeps.firewall !== undefined ? { firewall: launcherDeps.firewall } : {}),
         quit: () => { if (launcherDeps.onQuit) launcherDeps.onQuit(); else { launcher.shutdown(); process.exit(0); } },
         ...(launcherDeps.open ? { open: launcherDeps.open } : {}), ...(launcherDeps.spawnSim ? { spawnSim: launcherDeps.spawnSim } : {}),
         ...(launcherDeps.graceMs != null ? { graceMs: launcherDeps.graceMs } : {}),
@@ -456,4 +462,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { start, handle, parsePlan, ranges, countOf, listOf, fill, tileUrl, tileFile, download, addresses, applyEnvFile, defaultDataDir, migrateOldData, clearArea, TILES, MAX_TILES, DATA_DIR, CACHE, SETTINGS_FILE, AIRSPACE_DIR, PRECACHE_MAX_ZOOM, TILE_MAX_ZOOM };
+module.exports = { VIRTUAL_ADAPTER, start, handle, parsePlan, ranges, countOf, listOf, fill, tileUrl, tileFile, download, addresses, applyEnvFile, defaultDataDir, migrateOldData, clearArea, TILES, MAX_TILES, DATA_DIR, CACHE, SETTINGS_FILE, AIRSPACE_DIR, PRECACHE_MAX_ZOOM, TILE_MAX_ZOOM };

@@ -278,3 +278,20 @@ test('saved tiles are still there after the hub is stopped and started again', a
   assert.deepEqual(await getJSON('/precache/plan?layer=street&w=-180&e=180&s=-85&n=85&z0=0&z1=0'), { total: 1, missing: 0, limit: 40 });
   assert.equal(hits['/0/0/0.png'], 1, 'served from disk, not re-downloaded');
 });
+
+test('the addresses shown for other devices: real network adapters first, virtual ones (Hyper-V, WSL, Docker, VPNs, link-local) last', () => {
+  const os = require('node:os'), real = os.networkInterfaces;
+  const nic = (address, extra = {}) => [{ family: 'IPv4', address, internal: false, ...extra }];
+  os.networkInterfaces = () => ({
+    'vEthernet (WSL)': nic('172.20.64.1'), 'VirtualBox Host-Only Network': nic('192.168.56.1'), 'Ethernet 3': nic('169.254.7.9'),
+    'Wi-Fi': nic('192.168.1.42'), docker0: nic('172.17.0.1'), Loopback: [{ family: 'IPv4', address: '127.0.0.1', internal: true }], 'Wi-Fi v6': [{ family: 'IPv6', address: 'fe80::1', internal: false }],
+    'Ethernet': nic('10.0.0.5'), 'Some VPN': nic('100.64.0.2'),
+  });
+  try {
+    const urls = S.addresses(8080);
+    assert.deepEqual(urls.slice(0, 2), ['http://192.168.1.42:8080', 'http://10.0.0.5:8080'], 'the Wi-Fi and Ethernet addresses lead');
+    assert.ok(urls.indexOf('http://169.254.7.9:8080') > urls.indexOf('http://172.20.64.1:8080'), 'link-local last');
+    assert.ok(!urls.some((u) => /127\.0\.0\.1|fe80/.test(u)), 'no loopback and no IPv6');
+    assert.equal(urls.length, 7);
+  } finally { os.networkInterfaces = real; }
+});

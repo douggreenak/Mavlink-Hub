@@ -237,6 +237,7 @@ test('the Windows installer script: per-user, shortcuts that start the launcher 
   assert.ok(!/\$_\./.test(nsi.replace(/\$\$_/g, '')), 'PowerShell variables are escaped for NSIS');
   assert.match(nsi, /IfSilent skipStop[\s\S]*taskkill \/F \/IM "MAVLink Hub\.exe"[\s\S]*skipStop:/, 'an in-app update skips the cleanup (the app already did it); a manual install does it with fast commands');
   assert.ok(!/Get-CimInstance/.test(nsi), 'no slow WMI query');
+  assert.match(nsi, /IfSilent skipFw[\s\S]*ExecShell "runas" "netsh\.exe" 'advfirewall firewall add rule name="MAVLink Hub \(\$INSTDIR\\runtime\\node\.exe\)"[^\n]*profile=any'[\s\S]*skipFw:/, 'the installer offers to allow phones through the firewall, with the same rule name the app checks');
 });
 
 test('a release has one download per system, and the in-app updater downloads those same files', () => {

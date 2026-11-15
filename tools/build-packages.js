@@ -246,6 +246,10 @@ Section "Install"
   CreateShortcut "$SMPROGRAMS\\MAVLink Hub\\MAVLink Hub.lnk" ${target} ${params} "$INSTDIR\\assets\\hub.ico" 0 ${style} "" "Start the MAVLink Hub"
   CreateShortcut "$SMPROGRAMS\\MAVLink Hub\\Uninstall MAVLink Hub.lnk" "$INSTDIR\\Uninstall.exe"
   CreateShortcut "$DESKTOP\\MAVLink Hub.lnk" ${target} ${params} "$INSTDIR\\assets\\hub.ico" 0 ${style} "" "Start the MAVLink Hub"
+  IfSilent skipFw   ; an update keeps the rule it already has
+  MessageBox MB_YESNO "Let phones and other computers open the MAVLink Hub dashboard?$\\r$\\n$\\r$\\nThis asks Windows for permission once (Windows Firewall). You can also do it later from the MAVLink Hub window." /SD IDNO IDNO skipFw
+  ExecShell "runas" "netsh.exe" 'advfirewall firewall add rule name="MAVLink Hub ($INSTDIR\\runtime\\node.exe)" dir=in action=allow program="$INSTDIR\\runtime\\node.exe" enable=yes profile=any' SW_HIDE
+  skipFw:
   WriteRegStr HKCU "Software\\MAVLinkHub" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "MAVLink Hub"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${v}"

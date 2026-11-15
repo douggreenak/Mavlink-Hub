@@ -79,6 +79,11 @@ pre{margin:10px 0 0;max-height:190px;overflow:auto;background:var(--sh);border-r
     <div class="addrs" id="addrs"></div>
    </div>
   </div>
+  <div class="hint" id="fwbox" style="display:none;margin-top:12px">
+   <div id="fwtxt"></div>
+   <div class="row" style="margin-top:8px"><button class="primary" id="fwgo">Allow in Windows Firewall</button></div>
+  </div>
+  <div class="meta" id="fwok" style="display:none;margin-top:10px">Allowed through Windows Firewall.</div>
  </section>
 
  <section class="card">
@@ -163,7 +168,16 @@ function render(s){
  $('showlog').style.display=s.hasLog?'':'none';
  $('dir').textContent='Saved maps and settings: '+s.dataDir;
  renderUpdate(s);
+ renderFw(s);
 }
+// Windows Firewall: other devices can only reach the hub once it is allowed in. Shown on Windows only.
+let fwAsked=0;
+function renderFw(s){
+ const f=s.firewall,show=!!f&&f.supported&&f.allowed===false,ok=!!f&&f.supported&&f.allowed===true;
+ $('fwbox').style.display=show?'':'none';$('fwok').style.display=ok?'':'none';
+ if(show)$('fwtxt').textContent=Date.now()-fwAsked<30000?'Windows is asking for permission. Choose Yes in the box that appeared (it may be behind this window).':"Phones and other computers can't open the dashboard until this program is allowed through Windows Firewall. Allow it once, and it also works on public Wi-Fi.";
+}
+$('fwgo').onclick=()=>{fwAsked=Date.now();renderFw(cur);api('/launcher/firewall')};
 // ---- Updates: the hub checks GitHub for a newer release and can install it ----
 function makeSpinner(el){el.classList.add('sp');for(let k=0;k<12;k++){const i=document.createElement('i');i.style.transform='rotate('+k*30+'deg) translateY(-22px)';i.style.animationDelay=(-1+k/12)+'s';el.appendChild(i)}}
 makeSpinner($('busyspin'));

@@ -8,7 +8,7 @@
 //   - every POST must carry an "X-Launcher: 1" header and, if the browser sends an Origin, it must be the hub
 //     itself. A header like that forces a cross-origin pre-flight that the hub never approves, so another web page
 //     cannot make your browser press Stop.
-const fs = require('fs'), path = require('path'), { spawn } = require('child_process');
+const fs = require('fs'), path = require('path'), { spawn, execFile } = require('child_process');
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
@@ -36,6 +36,23 @@ function osOpen(kind, target) {
   c.on('error', () => {}); c.unref();
 }
 
+// Windows Firewall blocks other devices from reaching the hub unless this program is allowed in. The rule is named after the path of the
+// bundled node.exe (the installer adds the same one). `status()` says whether it exists (netsh's exit code, so it works in any language);
+// `allow()` asks Windows for permission (a UAC prompt) to add it for every network type, public Wi-Fi included.
+const ruleName = (exe) => 'MAVLink Hub (' + exe + ')';
+function windowsFirewall(exe = process.execPath, { run = execFile, launch = spawn } = {}) {
+  const name = ruleName(exe);
+  return {
+    status: () => new Promise((resolve) => run('netsh', ['advfirewall', 'firewall', 'show', 'rule', 'name=' + name], { windowsHide: true, timeout: 8000 }, (e) => resolve(!e))),
+    allow: () => {
+      const q = (s) => String(s).replace(/'/g, "''");
+      const args = `advfirewall firewall add rule name="${name}" dir=in action=allow program="${exe}" enable=yes profile=any`;
+      const c = launch('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', `Start-Process -FilePath netsh.exe -ArgumentList '${q(args)}' -Verb RunAs -WindowStyle Hidden`], { detached: true, stdio: 'ignore', windowsHide: true });
+      if (c && c.on) c.on('error', () => {}); if (c && c.unref) c.unref();
+    },
+  };
+}
+
 function createLauncherApi(o) {
   const { dir, page, info, quit, now = Date.now, graceMs = 8000, open = osOpen, profiles = [] } = o;
   const clients = new Set();
@@ -50,7 +67,7 @@ function createLauncherApi(o) {
       version: i.version, uptimeS: Math.round((t - i.startedAt) / 1000), webPort: i.webPort, udpPort: i.udpPort, urls: i.urls,
       telemetry: { packets: s.packets, bytes: s.bytes, pps: +rate.pps.toFixed(1), bps: Math.round(rate.bps), lastAgoMs: s.last ? t - s.last : null },
       units: i.units, viewers: i.viewers, dataDir: i.dataDir, airspaceDir: i.airspaceDir, hasLog: !!i.logFile,
-      testFlight: { running: !!flight, profile: flight ? flight.profile : null }, profiles, update: updater ? updater.state() : null,
+      testFlight: { running: !!flight, profile: flight ? flight.profile : null }, profiles, update: updater ? updater.state() : null, firewall: { ...fwState },
     };
   }
   const json = (res, code, o2) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o2)); };
@@ -59,6 +76,10 @@ function createLauncherApi(o) {
     req.on('end', () => { let v = {}; try { v = b ? JSON.parse(b) : {}; } catch (e) { return cb(null); } cb(v && typeof v === 'object' ? v : {}); });
   }
   const push = () => { for (const c of clients) c.write(`data: ${JSON.stringify(snapshot(c._port))}\n\n`); };
+  // Windows only (or a test double): is this program allowed through the firewall? Refreshed while the window is open.
+  const fw = o.firewall !== undefined ? o.firewall : (process.platform === 'win32' ? windowsFirewall() : null);
+  const fwState = { supported: !!fw, allowed: null }; let fwTimer = null;
+  const fwRefresh = () => { if (!fw) return Promise.resolve(); return Promise.resolve(fw.status()).then((a) => { if (fwState.allowed !== a) { fwState.allowed = a; push(); } }, () => {}); };
   const updater = o.updater ? o.updater({ onChange: push, quit }) : null;   // checks GitHub for a newer version, installs it on request
   function maybeQuit() {
     // Closing the window stops the hub (after a short grace so a reload or a second window opening does not). A hub that no
@@ -78,6 +99,7 @@ function createLauncherApi(o) {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       res._port = port; clients.add(res); everConnected = true; clearTimeout(graceT);
       if (updater) updater.checkIfStale();
+      fwRefresh(); if (fw && !fwTimer) { fwTimer = setInterval(fwRefresh, 15000); fwTimer.unref(); }
       res.write(`data: ${JSON.stringify(snapshot(port))}\n\n`);
       if (!timer) { timer = setInterval(push, 1000); timer.unref(); }
       req.on('close', () => { clients.delete(res); if (!clients.size) { clearInterval(timer); timer = null; } maybeQuit(); });
@@ -120,6 +142,11 @@ function createLauncherApi(o) {
         if (!o.setUnits || !o.setUnits(body.units)) return json(res, 400, { error: 'Unknown units' });
         push(); return json(res, 200, { ok: true, units: body.units });
       }
+      if (url === '/launcher/firewall') {
+        if (!fw) return json(res, 400, { error: 'Not needed on this computer' });
+        fw.allow(); let n = 0; const t = setInterval(() => { fwRefresh(); if (fwState.allowed || ++n > 20) clearInterval(t); }, 2000); t.unref();   // watch for the answer to the prompt
+        return json(res, 200, { ok: true });
+      }
       if (url === '/launcher/stop') { json(res, 200, { ok: true }); setTimeout(quit, 150); return; }
       json(res, 404, { error: 'Not found' });
     });
@@ -127,6 +154,7 @@ function createLauncherApi(o) {
   }
 
   function shutdown() {
+    clearInterval(fwTimer); fwTimer = null;
     clearInterval(timer); clearTimeout(graceT); timer = null;
     for (const c of clients) c.destroy(); clients.clear();
     if (flight) { try { flight.child.kill(); } catch (e) { /* already gone */ } flight = null; }
@@ -134,4 +162,4 @@ function createLauncherApi(o) {
   return { handle, shutdown, snapshot, testFlightRunning: () => !!flight };
 }
 
-module.exports = { createLauncherApi, guard, osOpen, LOOPBACK };
+module.exports = { createLauncherApi, guard, osOpen, windowsFirewall, ruleName, LOOPBACK };

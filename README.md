@@ -167,6 +167,7 @@ checking off. The only thing sent is the request to GitHub's public releases API
 | What you see | What it means | What to do |
 | --- | --- | --- |
 | Dashboard says **Hub offline** | The browser cannot reach the hub | Start MAVLink Hub.bat; on a phone, check it is on the same Wi-Fi and the network is marked Private on the laptop |
+| A phone or other computer cannot open the dashboard | Windows Firewall is blocking the hub (common on public Wi-Fi), or the address used belongs to a virtual adapter | On Windows the MAVLink Hub window shows an **Allow in Windows Firewall** button when this is the case; press it and choose Yes (the installer also offers this). Use the first address in the window, and make sure both devices are on the same Wi-Fi |
 | **Hub connected, no telemetry** | The hub runs but no MAVLink arrives | Check the backpack is in MAVLink mode with Telemetry = WiFi, that the laptop is on the backpack's network, and that Node.js is allowed through the firewall |
 | The launcher says **the hub could not start**, or its window shows **Stopped** | Usually another program already holds port 8080 or 14550, or Node.js is missing | Read the message; close the other program, or change `WEB_PORT` / `UDP_PORT` in `hub.env`; **Show log** in the launcher has details |
 | Map is blank in the field | No internet and that area was not saved | Download it from the *Offline* tab next time you are online |
